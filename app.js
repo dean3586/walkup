@@ -54,6 +54,24 @@
   const globalDurationLabel = document.getElementById('global-duration-label');
   const songSettingsList = document.getElementById('song-settings-list');
 
+  // Now Playing (fullscreen) refs
+  const nowPlaying = document.getElementById('now-playing');
+  const expandBtn = document.getElementById('expand-btn');
+  const collapseBtn = document.getElementById('collapse-btn');
+  const npNumber = document.getElementById('np-number');
+  const npName = document.getElementById('np-name');
+  const npProgressBar = document.getElementById('np-progress-bar');
+  const npProgressFill = document.getElementById('np-progress-fill');
+  const npTimeCurrent = document.getElementById('np-time-current');
+  const npTimeTotal = document.getElementById('np-time-total');
+  const npPrevBtn = document.getElementById('np-prev-btn');
+  const npNextBtn = document.getElementById('np-next-btn');
+  const npPlayPauseBtn = document.getElementById('np-play-pause-btn');
+  const npPlayIcon = document.getElementById('np-play-icon');
+  const npPauseIcon = document.getElementById('np-pause-icon');
+  const npBatterBtn = document.getElementById('np-batter-btn');
+  const npNextBatter = document.getElementById('np-next-batter');
+
   // === IndexedDB for uploaded audio files ===
   const DB_NAME = 'walkup-audio';
   const STORE_NAME = 'files';
@@ -744,6 +762,55 @@
       const total = getTotalDuration();
       seekTo(pct * total);
     });
+
+    // Now Playing fullscreen
+    expandBtn.addEventListener('click', () => {
+      nowPlaying.classList.remove('hidden');
+      updateNowPlaying();
+    });
+
+    collapseBtn.addEventListener('click', () => {
+      nowPlaying.classList.add('hidden');
+    });
+
+    // Mirror controls in fullscreen view
+    npPlayPauseBtn.addEventListener('click', () => playPauseBtn.click());
+    npPrevBtn.addEventListener('click', () => prevBtn.click());
+    npNextBtn.addEventListener('click', () => nextBtn.click());
+    npBatterBtn.addEventListener('click', () => batterBtn.click());
+
+    npProgressBar.addEventListener('click', (e) => {
+      if (!currentPlayer || !playbackPhase) return;
+      const rect = npProgressBar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      const total = getTotalDuration();
+      seekTo(pct * total);
+    });
+  }
+
+  function updateNowPlaying() {
+    if (!currentPlayer) {
+      npNumber.textContent = '--';
+      npName.textContent = 'No batter';
+      npNextBatter.textContent = '—';
+      return;
+    }
+    npNumber.textContent = '#' + currentPlayer.number;
+    npName.textContent = currentPlayer.firstName + ' ' + currentPlayer.lastName;
+
+    // Up next from lineup
+    if (lineup.length > 0 && currentBatterIdx >= 0) {
+      const nextIdx = (currentBatterIdx + 1) % lineup.length;
+      const nextNum = lineup[nextIdx];
+      const nextPlayer = roster.find(p => p.number === nextNum);
+      if (nextPlayer) {
+        npNextBatter.textContent = `#${nextPlayer.number} ${nextPlayer.firstName} ${nextPlayer.lastName}`;
+      } else {
+        npNextBatter.textContent = '—';
+      }
+    } else {
+      npNextBatter.textContent = '—';
+    }
   }
 
   function updateTransportState() {
@@ -756,13 +823,22 @@
     batterBtn.textContent = isPlaying ? 'Stop Batter' : 'Next Batter';
     playPauseBtn.disabled = !hasLineup && !isPlaying;
 
+    npPrevBtn.disabled = !hasLineup;
+    npNextBtn.disabled = !hasLineup;
+    npBatterBtn.disabled = !hasLineup;
+    npBatterBtn.textContent = isPlaying ? 'Stop Batter' : 'Next Batter';
+    npPlayPauseBtn.disabled = !hasLineup && !isPlaying;
+
     playbackBar.classList.toggle('active', isPlaying);
+    updateNowPlaying();
   }
 
   function updatePlayPauseIcon() {
     const isPlaying = playbackPhase !== null && !isPaused;
     playIcon.style.display = isPlaying ? 'none' : '';
     pauseIcon.style.display = isPlaying ? '' : 'none';
+    npPlayIcon.style.display = isPlaying ? 'none' : '';
+    npPauseIcon.style.display = isPlaying ? '' : 'none';
   }
 
   // === Play a player ===
@@ -988,6 +1064,11 @@
       progressFill.style.width = percent + '%';
       timeCurrent.textContent = formatTime(Math.max(0, elapsed));
       timeTotal.textContent = formatTime(Math.max(0, total));
+
+      // Mirror to fullscreen view
+      npProgressFill.style.width = percent + '%';
+      npTimeCurrent.textContent = formatTime(Math.max(0, elapsed));
+      npTimeTotal.textContent = formatTime(Math.max(0, total));
     }, 100);
   }
 

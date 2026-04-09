@@ -62,6 +62,11 @@
         <span id="playback-name">No player selected</span>
         <span id="playback-status"></span>
         <span id="playback-timer"><span id="time-current">--:--</span> / <span id="time-total">--:--</span></span>
+        <button id="expand-btn" aria-label="Expand">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+        </button>
       </div>
       <div id="transport">
         <button id="prev-btn" class="transport-btn" disabled aria-label="Previous">
@@ -76,6 +81,51 @@
         </button>
       </div>
       <button id="batter-btn" disabled>Next Batter</button>
+    </div>
+  </div>
+
+  <div id="now-playing" class="hidden">
+    <button id="collapse-btn" aria-label="Collapse">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+
+    <div id="np-current-label">Now Batting</div>
+
+    <div id="np-batter">
+      <div id="np-number"></div>
+      <div id="np-name"></div>
+    </div>
+
+    <div id="np-progress">
+      <div id="np-progress-bar">
+        <div id="np-progress-fill"></div>
+      </div>
+      <div id="np-times">
+        <span id="np-time-current">0:00</span>
+        <span id="np-time-total">0:00</span>
+      </div>
+    </div>
+
+    <div id="np-transport">
+      <button id="np-prev-btn" class="np-transport-btn" aria-label="Previous">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="3" height="14"/><polygon points="21 5 9 12 21 19 21 5"/></svg>
+      </button>
+      <button id="np-play-pause-btn" class="np-transport-btn primary" aria-label="Play">
+        <svg id="np-play-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <svg id="np-pause-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+      </button>
+      <button id="np-next-btn" class="np-transport-btn" aria-label="Next">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="3 5 15 12 3 19 3 5"/><rect x="18" y="5" width="3" height="14"/></svg>
+      </button>
+    </div>
+
+    <button id="np-batter-btn">Stop Batter</button>
+
+    <div id="np-up-next">
+      <span class="np-up-next-label">Up Next</span>
+      <div id="np-next-batter">—</div>
     </div>
   </div>
 

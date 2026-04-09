@@ -1,2 +1,3 @@
 split_audio.py
+split_with_whisper.py
 .DS_Store
