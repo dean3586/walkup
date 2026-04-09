@@ -13,23 +13,26 @@
   <header>
     <h1>Walk-Up Music</h1>
     <nav>
-      <button class="tab active" data-tab="roster">Roster</button>
-      <button class="tab" data-tab="lineup">Lineup</button>
+      <button class="tab active" data-tab="lineup">Lineup</button>
+      <button class="tab" data-tab="roster">Roster</button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
   </header>
 
   <main>
-    <section id="roster-view" class="view active"></section>
-
-    <section id="lineup-view" class="view">
+    <section id="lineup-view" class="view active">
+      <div id="lineup-header">
+        <h3>Batting Order</h3>
+        <button id="clear-lineup-btn" class="clear-btn">Clear</button>
+      </div>
       <div id="lineup-list"></div>
       <div id="available-players">
         <h3>Tap to add to lineup</h3>
         <div id="available-list"></div>
       </div>
-      <button id="clear-lineup-btn" class="clear-btn">Clear Lineup</button>
     </section>
+
+    <section id="roster-view" class="view"></section>
 
     <section id="settings-view" class="view">
       <div class="settings-section">

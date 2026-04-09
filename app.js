@@ -13,6 +13,9 @@
   let progressInterval = null;
   let globalDuration = 30;
   let isPaused = false;
+  let playbackStartTime = 0;
+  let pausedAt = 0;       // elapsed ms when paused
+  let totalPausedMs = 0;  // accumulated pause time
 
   // === Drag state ===
   let dragItem = null;
@@ -318,19 +321,17 @@
           <span class="song-setting-number">#${player.number}</span>
           <span class="song-setting-name">${player.firstName} ${player.lastName}</span>
         </div>
-        ${hasWalkup ? `
-          <div class="song-setting-control">
+        <div class="song-setting-control">
+          ${hasWalkup ? `
             <label class="song-setting-label">Start</label>
             <button class="start-time-btn minus" data-number="${player.number}">-</button>
             <span class="start-time-value" data-number="${player.number}">${formatTime(startTime)}</span>
             <button class="start-time-btn plus" data-number="${player.number}">+</button>
-            <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
-          </div>
-        ` : `
-          <div class="song-setting-control">
-            <span class="no-song-label">No song assigned</span>
-          </div>
-        `}
+          ` : `
+            <span class="no-song-label">No song</span>
+          `}
+          <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
+        </div>
       `;
 
       songSettingsList.appendChild(row);
@@ -356,29 +357,17 @@
       btn.addEventListener('click', () => {
         const num = parseInt(btn.dataset.number);
         const player = roster.find(p => p.number === num);
-        if (!player || !player.walkup) return;
+        if (!player) return;
 
-        stopPlayback(false);
-        const vol = 1;
-        walkupAudio.src = player.walkup.file;
-        walkupAudio.volume = vol;
-        walkupAudio.currentTime = player.walkup.startTime || 0;
-        walkupAudio.play().catch(() => {});
-
-        currentPlayer = player;
-        playbackPhase = 'walkup';
-        isPaused = false;
-        showPlaybackInfo(player);
+        // Play the full announcement + walkup sequence, auto-stop after 8s
+        playPlayer(player);
         playbackStatus.textContent = 'Preview';
-        updatePlayPauseIcon();
-        updateTransportState();
-        startProgressTracking();
 
         setTimeout(() => {
-          if (currentPlayer === player && playbackPhase === 'walkup') {
-            fadeOut(walkupAudio, 1000, () => finishPlayback());
+          if (currentPlayer === player) {
+            stopPlayback(true);
           }
-        }, 5000);
+        }, 8000);
       });
     });
   }
@@ -417,9 +406,19 @@
       const activeAudio = playbackPhase === 'walkup' ? walkupAudio : announcementAudio;
       if (isPaused) {
         activeAudio.play().catch(() => {});
+        if (player.walkup && playbackPhase === 'announcement') {
+          walkupAudio.play().catch(() => {});
+        } else if (playbackPhase === 'walkup') {
+          // already the active audio
+        }
+        totalPausedMs += Date.now() - pausedAt;
         isPaused = false;
       } else {
         activeAudio.pause();
+        if (playbackPhase === 'announcement' && !walkupAudio.paused) {
+          walkupAudio.pause();
+        }
+        pausedAt = Date.now();
         isPaused = true;
       }
       updatePlayPauseIcon();
@@ -458,6 +457,8 @@
     });
 
     clearLineupBtn.addEventListener('click', () => {
+      if (lineup.length === 0) return;
+      if (!confirm('Clear the entire batting order?')) return;
       lineup = [];
       currentBatterIdx = -1;
       saveLineup();
@@ -504,6 +505,9 @@
     currentPlayer = player;
     playbackPhase = 'announcement';
     isPaused = false;
+    playbackStartTime = Date.now();
+    pausedAt = 0;
+    totalPausedMs = 0;
 
     showPlaybackInfo(player);
     highlightPlaying(player.number);
@@ -511,6 +515,18 @@
     updateTransportState();
 
     const vol = 1;
+    // Boost announcement using Web Audio API gain node
+    if (!announcementAudio._boosted) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaElementSource(announcementAudio);
+      const gain = ctx.createGain();
+      gain.gain.value = 1.5;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      announcementAudio._boosted = true;
+      announcementAudio._gain = gain;
+      announcementAudio._ctx = ctx;
+    }
     announcementAudio.src = player.announcement;
     announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
@@ -530,7 +546,6 @@
 
   function startWalkup(player) {
     playbackPhase = 'walkup';
-    playbackStatus.textContent = 'Walk-up';
     updatePlayPauseIcon();
 
     const startTime = player.walkup.startTime || 0;
@@ -635,30 +650,20 @@
         return;
       }
 
-      let percent = 0;
-      let elapsed = 0;
-      let total = 0;
+      const now = isPaused ? pausedAt : Date.now();
+      const elapsed = (now - playbackStartTime - totalPausedMs) / 1000;
 
-      if (playbackPhase === 'announcement') {
-        const a = announcementAudio;
-        if (a.duration && isFinite(a.duration)) {
-          elapsed = a.currentTime;
-          total = a.duration;
-          percent = (elapsed / total) * 100;
-        }
-        playbackStatus.textContent = 'Announcing';
-      } else if (playbackPhase === 'walkup') {
-        const w = walkupAudio;
-        const startTime = currentPlayer.walkup.startTime || 0;
-        const duration = currentPlayer.walkup.duration || globalDuration;
-        elapsed = w.currentTime - startTime;
-        total = duration || (w.duration - startTime);
-        if (total > 0) {
-          percent = Math.min(100, (elapsed / total) * 100);
-        }
-      }
+      // Total = announcement duration + walkup duration
+      const annDur = announcementAudio.duration && isFinite(announcementAudio.duration)
+        ? announcementAudio.duration : 3;
+      const walkupDur = (currentPlayer.walkup)
+        ? (currentPlayer.walkup.duration || globalDuration)
+        : 0;
+      const total = annDur + walkupDur;
 
-      progressFill.style.width = Math.min(100, Math.max(0, percent)) + '%';
+      const percent = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+
+      progressFill.style.width = percent + '%';
       timeCurrent.textContent = formatTime(Math.max(0, elapsed));
       timeTotal.textContent = formatTime(Math.max(0, total));
     }, 100);
@@ -668,7 +673,7 @@
   function showPlaybackInfo(player) {
     playbackNumber.textContent = '#' + player.number;
     playbackName.textContent = player.firstName + ' ' + player.lastName;
-    playbackStatus.textContent = 'Announcing';
+    playbackStatus.textContent = 'Playing';
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
     timeTotal.textContent = '--:--';

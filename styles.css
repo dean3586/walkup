@@ -268,6 +268,17 @@ nav {
   margin: 0 auto;
 }
 
+#lineup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#lineup-header h3 {
+  margin: 0;
+}
+
 #lineup-view h3 {
   font-size: 0.7rem;
   color: var(--text-tertiary);
@@ -442,17 +453,15 @@ nav {
 .action-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
 .clear-btn {
-  display: block;
-  margin: 22px auto 0;
   background: none;
   border: 1px solid var(--border);
   color: var(--text-tertiary);
-  padding: 10px 24px;
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   cursor: pointer;
   transition: all var(--dur-m) var(--ease);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .clear-btn:hover {
