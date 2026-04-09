@@ -403,21 +403,20 @@
         return;
       }
 
-      const activeAudio = playbackPhase === 'walkup' ? walkupAudio : announcementAudio;
       if (isPaused) {
-        activeAudio.play().catch(() => {});
-        if (player.walkup && playbackPhase === 'announcement') {
+        // Resume all active audio
+        if (playbackPhase === 'announcement') {
+          announcementAudio.play().catch(() => {});
+          if (currentPlayer && currentPlayer.walkup) walkupAudio.play().catch(() => {});
+        } else {
           walkupAudio.play().catch(() => {});
-        } else if (playbackPhase === 'walkup') {
-          // already the active audio
         }
         totalPausedMs += Date.now() - pausedAt;
         isPaused = false;
       } else {
-        activeAudio.pause();
-        if (playbackPhase === 'announcement' && !walkupAudio.paused) {
-          walkupAudio.pause();
-        }
+        // Pause all active audio
+        announcementAudio.pause();
+        walkupAudio.pause();
         pausedAt = Date.now();
         isPaused = true;
       }
