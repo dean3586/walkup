@@ -11,17 +11,23 @@
   let playbackPhase = null;   // 'announcement' | 'walkup' | null
   let fadeInterval = null;
   let progressInterval = null;
+  let walkupFadeTimeout = null;
   let globalDuration = 30;
   let isPaused = false;
   let playbackStartTime = 0;
-  let pausedAt = 0;       // elapsed ms when paused
-  let totalPausedMs = 0;  // accumulated pause time
+  let pausedAt = 0;
+  let totalPausedMs = 0;
+  let wakeLock = null;
 
-  // === Drag state ===
+  // === Drag (lineup reorder) state ===
   let dragItem = null;
   let dragIdx = -1;
   let dragOffsetY = 0;
   let placeholder = null;
+
+  // === Audio cache ===
+  const objectUrlCache = {};   // playerNumber -> object URL for uploaded blob
+  const audioBufferCache = {}; // playerNumber -> decoded AudioBuffer (for waveform)
 
   // === DOM refs ===
   const rosterView = document.getElementById('roster-view');
@@ -38,6 +44,7 @@
   const batterBtn = document.getElementById('batter-btn');
   const playIcon = document.getElementById('play-icon');
   const pauseIcon = document.getElementById('pause-icon');
+  const progressBar = document.getElementById('progress-bar');
   const progressFill = document.getElementById('progress-fill');
   const timeCurrent = document.getElementById('time-current');
   const timeTotal = document.getElementById('time-total');
@@ -47,11 +54,92 @@
   const globalDurationLabel = document.getElementById('global-duration-label');
   const songSettingsList = document.getElementById('song-settings-list');
 
+  // === IndexedDB for uploaded audio files ===
+  const DB_NAME = 'walkup-audio';
+  const STORE_NAME = 'files';
+  let dbPromise = null;
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(STORE_NAME);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  async function saveAudioFile(playerNumber, blob) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(blob, playerNumber);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function getAudioFile(playerNumber) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(playerNumber);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function loadUploadedAudio() {
+    // For each player, check IndexedDB for uploaded file. If present, override the walkup file path with object URL.
+    for (const player of roster) {
+      const blob = await getAudioFile(player.number);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        objectUrlCache[player.number] = url;
+        if (!player.walkup) {
+          player.walkup = { startTime: 0 };
+        }
+        player.walkup.file = url;
+      }
+    }
+  }
+
+  // === Wake Lock ===
+  async function acquireWakeLock() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch (e) {
+      // Silent fail — wake lock not supported or denied
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+  }
+
+  // Re-acquire on visibility change (page returns from background)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && playbackPhase) {
+      acquireWakeLock();
+    }
+  });
+
   // === Init ===
   async function init() {
     const resp = await fetch('roster.json');
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
+
+    await loadUploadedAudio();
 
     const saved = localStorage.getItem('walkup-lineup');
     if (saved) {
@@ -95,6 +183,11 @@
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById(tab.dataset.tab + '-view').classList.add('active');
+
+        // Lazy-render waveforms when settings tab opens
+        if (tab.dataset.tab === 'settings') {
+          renderAllWaveforms();
+        }
       });
     });
   }
@@ -122,6 +215,7 @@
       `;
 
       card.addEventListener('click', () => playPlayer(player));
+      attachDropHandlers(card, player);
       rosterView.appendChild(card);
     });
   }
@@ -260,13 +354,10 @@
       const [moved] = lineup.splice(dragIdx, 1);
       lineup.splice(newIdx, 0, moved);
 
-      // Recalculate current batter position after the move
       if (currentBatterIdx === dragIdx) {
         currentBatterIdx = newIdx;
       } else {
-        // Removal shifts indices down above dragIdx
         if (currentBatterIdx > dragIdx) currentBatterIdx--;
-        // Insertion shifts indices up at and above newIdx
         if (currentBatterIdx >= newIdx) currentBatterIdx++;
       }
 
@@ -312,31 +403,43 @@
     roster.forEach(player => {
       const hasWalkup = player.walkup !== null;
       const row = document.createElement('div');
-      row.className = 'song-setting-row' + (hasWalkup ? '' : ' no-song');
+      row.className = 'song-setting-row';
+      row.dataset.number = player.number;
 
       const startTime = hasWalkup ? (player.walkup.startTime || 0) : 0;
 
       row.innerHTML = `
-        <div class="song-setting-player">
-          <span class="song-setting-number">#${player.number}</span>
-          <span class="song-setting-name">${player.firstName} ${player.lastName}</span>
+        <div class="song-setting-header">
+          <div class="song-setting-player">
+            <span class="song-setting-number">#${player.number}</span>
+            <span class="song-setting-name">${player.firstName} ${player.lastName}</span>
+          </div>
+          <div class="song-setting-control">
+            ${hasWalkup ? `
+              <button class="start-time-btn minus" data-number="${player.number}">-</button>
+              <span class="start-time-value" data-number="${player.number}">${formatTime(startTime)}</span>
+              <button class="start-time-btn plus" data-number="${player.number}">+</button>
+            ` : ''}
+            <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
+          </div>
         </div>
-        <div class="song-setting-control">
-          ${hasWalkup ? `
-            <label class="song-setting-label">Start</label>
-            <button class="start-time-btn minus" data-number="${player.number}">-</button>
-            <span class="start-time-value" data-number="${player.number}">${formatTime(startTime)}</span>
-            <button class="start-time-btn plus" data-number="${player.number}">+</button>
-          ` : `
-            <span class="no-song-label">No song</span>
-          `}
-          <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
+        <div class="waveform-container" data-number="${player.number}">
+          ${hasWalkup
+            ? `<canvas class="waveform-canvas" data-number="${player.number}"></canvas>
+               <div class="waveform-marker" data-number="${player.number}"></div>
+               <div class="waveform-overlay">Drop MP3 to replace</div>`
+            : `<div class="waveform-empty">Drop an MP3 here to assign a walk-up song</div>`}
         </div>
       `;
+
+      // Drop target on the waveform container
+      const waveformContainer = row.querySelector('.waveform-container');
+      attachDropHandlers(waveformContainer, player);
 
       songSettingsList.appendChild(row);
     });
 
+    // Wire up +/- buttons
     songSettingsList.querySelectorAll('.start-time-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const num = parseInt(btn.dataset.number);
@@ -349,25 +452,41 @@
         const valueEl = songSettingsList.querySelector(`.start-time-value[data-number="${num}"]`);
         if (valueEl) valueEl.textContent = formatTime(player.walkup.startTime);
 
+        updateWaveformMarker(num);
         saveStartTimes();
       });
     });
 
+    // Wire up preview buttons (full-duration playback)
     songSettingsList.querySelectorAll('.start-time-preview').forEach(btn => {
       btn.addEventListener('click', () => {
         const num = parseInt(btn.dataset.number);
         const player = roster.find(p => p.number === num);
         if (!player) return;
-
-        // Play the full announcement + walkup sequence, auto-stop after 8s
         playPlayer(player);
         playbackStatus.textContent = 'Preview';
+      });
+    });
 
-        setTimeout(() => {
-          if (currentPlayer === player) {
-            stopPlayback(true);
-          }
-        }, 8000);
+    // Wire up waveform clicks (set start time)
+    songSettingsList.querySelectorAll('.waveform-canvas').forEach(canvas => {
+      canvas.addEventListener('click', (e) => {
+        const num = parseInt(canvas.dataset.number);
+        const player = roster.find(p => p.number === num);
+        if (!player || !player.walkup) return;
+        const buf = audioBufferCache[num];
+        if (!buf) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const pct = x / rect.width;
+        player.walkup.startTime = Math.round(pct * buf.duration);
+
+        const valueEl = songSettingsList.querySelector(`.start-time-value[data-number="${num}"]`);
+        if (valueEl) valueEl.textContent = formatTime(player.walkup.startTime);
+
+        updateWaveformMarker(num);
+        saveStartTimes();
       });
     });
   }
@@ -386,11 +505,150 @@
     localStorage.setItem('walkup-start-times', JSON.stringify(times));
   }
 
-  // === Transport controls ===
+  // === Waveform rendering ===
+  async function renderAllWaveforms() {
+    for (const player of roster) {
+      if (player.walkup) {
+        await renderWaveform(player);
+      }
+    }
+  }
+
+  async function renderWaveform(player) {
+    const canvas = songSettingsList.querySelector(`.waveform-canvas[data-number="${player.number}"]`);
+    if (!canvas) return;
+
+    let buffer = audioBufferCache[player.number];
+    if (!buffer) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const arrayBuffer = await fetch(player.walkup.file).then(r => r.arrayBuffer());
+        buffer = await ctx.decodeAudioData(arrayBuffer);
+        audioBufferCache[player.number] = buffer;
+      } catch (e) {
+        console.error('Failed to decode audio for waveform', e);
+        return;
+      }
+    }
+
+    drawWaveform(canvas, buffer);
+    updateWaveformMarker(player.number);
+  }
+
+  function drawWaveform(canvas, buffer) {
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.offsetWidth || canvas.parentElement.offsetWidth || 300;
+    const cssHeight = 60;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    const channelData = buffer.getChannelData(0);
+    const bars = Math.floor(cssWidth / 3);
+    const samplesPerBar = Math.floor(channelData.length / bars);
+    const midY = cssHeight / 2;
+
+    ctx.fillStyle = 'rgba(251, 252, 255, 0.35)';
+    for (let i = 0; i < bars; i++) {
+      let max = 0;
+      const start = i * samplesPerBar;
+      const end = start + samplesPerBar;
+      for (let j = start; j < end; j++) {
+        const v = Math.abs(channelData[j]);
+        if (v > max) max = v;
+      }
+      const h = Math.max(1, max * cssHeight * 0.9);
+      ctx.fillRect(i * 3, midY - h / 2, 2, h);
+    }
+  }
+
+  function updateWaveformMarker(playerNumber) {
+    const player = roster.find(p => p.number === playerNumber);
+    if (!player || !player.walkup) return;
+    const buf = audioBufferCache[playerNumber];
+    if (!buf) return;
+
+    const marker = songSettingsList.querySelector(`.waveform-marker[data-number="${playerNumber}"]`);
+    if (!marker) return;
+
+    const pct = ((player.walkup.startTime || 0) / buf.duration) * 100;
+    marker.style.left = pct + '%';
+  }
+
+  // === Drag-and-drop file upload ===
+  function attachDropHandlers(element, player) {
+    element.addEventListener('dragover', (e) => {
+      // Only show drop zone if files are being dragged
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault();
+        element.classList.add('drag-over');
+      }
+    });
+
+    element.addEventListener('dragleave', (e) => {
+      if (!element.contains(e.relatedTarget)) {
+        element.classList.remove('drag-over');
+      }
+    });
+
+    element.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      element.classList.remove('drag-over');
+
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('audio/') && !file.name.toLowerCase().endsWith('.mp3')) {
+        alert('Please drop an audio file (MP3)');
+        return;
+      }
+
+      try {
+        await saveAudioFile(player.number, file);
+
+        // Revoke old object URL if any
+        if (objectUrlCache[player.number]) {
+          URL.revokeObjectURL(objectUrlCache[player.number]);
+        }
+
+        const url = URL.createObjectURL(file);
+        objectUrlCache[player.number] = url;
+
+        if (!player.walkup) {
+          player.walkup = { startTime: 0 };
+        }
+        player.walkup.file = url;
+
+        // Clear waveform cache so it re-decodes
+        delete audioBufferCache[player.number];
+
+        renderRoster();
+        renderSettings();
+        renderAllWaveforms();
+      } catch (err) {
+        console.error('Failed to save audio file', err);
+        alert('Failed to save audio file: ' + err.message);
+      }
+    });
+  }
+
+  // === Playback ===
+  function getTotalDuration() {
+    if (!currentPlayer) return 0;
+    const annDur = (announcementAudio.duration && isFinite(announcementAudio.duration))
+      ? announcementAudio.duration : 3;
+    if (!currentPlayer.walkup) return annDur;
+    const walkupDur = currentPlayer.walkup.duration || globalDuration;
+    return Math.max(annDur, walkupDur);
+  }
+
   function setupControls() {
     playPauseBtn.addEventListener('click', () => {
       if (!currentPlayer || !playbackPhase) {
-        // If lineup has players, start from current or first
         if (lineup.length > 0) {
           if (currentBatterIdx < 0) currentBatterIdx = 0;
           const num = lineup[currentBatterIdx];
@@ -404,7 +662,6 @@
       }
 
       if (isPaused) {
-        // Resume all active audio
         if (playbackPhase === 'announcement') {
           announcementAudio.play().catch(() => {});
           if (currentPlayer && currentPlayer.walkup) walkupAudio.play().catch(() => {});
@@ -413,25 +670,15 @@
         }
         totalPausedMs += Date.now() - pausedAt;
         isPaused = false;
+        acquireWakeLock();
       } else {
-        // Pause all active audio
         announcementAudio.pause();
         walkupAudio.pause();
         pausedAt = Date.now();
         isPaused = true;
+        releaseWakeLock();
       }
       updatePlayPauseIcon();
-    });
-
-    prevBtn.addEventListener('click', () => {
-      if (lineup.length === 0) return;
-      currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
-      const num = lineup[currentBatterIdx];
-      const player = roster.find(p => p.number === num);
-      if (player) {
-        playPlayer(player);
-        renderLineup();
-      }
     });
 
     function advanceBatter() {
@@ -445,13 +692,23 @@
       }
     }
 
+    prevBtn.addEventListener('click', () => {
+      if (lineup.length === 0) return;
+      currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
+      const num = lineup[currentBatterIdx];
+      const player = roster.find(p => p.number === num);
+      if (player) {
+        playPlayer(player);
+        renderLineup();
+      }
+    });
+
     nextBtn.addEventListener('click', advanceBatter);
+
     batterBtn.addEventListener('click', () => {
       if (playbackPhase) {
-        // Currently playing — just stop, don't advance
         stopPlayback(true);
       } else {
-        // Not playing — advance and play
         advanceBatter();
       }
     });
@@ -477,6 +734,15 @@
       globalDuration = parseInt(globalDurationSlider.value);
       globalDurationLabel.textContent = globalDuration + 's';
       localStorage.setItem('walkup-global-duration', globalDuration);
+    });
+
+    // Tap progress bar to seek
+    progressBar.addEventListener('click', (e) => {
+      if (!currentPlayer || !playbackPhase) return;
+      const rect = progressBar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      const total = getTotalDuration();
+      seekTo(pct * total);
     });
   }
 
@@ -515,7 +781,6 @@
     updatePlayPauseIcon();
     updateTransportState();
 
-    const vol = 1;
     // Boost announcement using Web Audio API gain node
     if (!announcementAudio._boosted) {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -525,15 +790,12 @@
       source.connect(gain);
       gain.connect(ctx.destination);
       announcementAudio._boosted = true;
-      announcementAudio._gain = gain;
-      announcementAudio._ctx = ctx;
     }
     announcementAudio.src = player.announcement;
     announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
     announcementAudio.play().catch(() => {});
 
-    // Start walk-up song quietly underneath the announcement
     if (player.walkup) {
       const startTime = player.walkup.startTime || 0;
       walkupAudio.src = player.walkup.file;
@@ -542,35 +804,100 @@
       walkupAudio.play().catch(() => {});
     }
 
+    acquireWakeLock();
     startProgressTracking();
   }
 
   function startWalkup(player) {
     playbackPhase = 'walkup';
     updatePlayPauseIcon();
+    fadeIn(walkupAudio, 0.15, 1, 1000);
+    scheduleWalkupFadeOut(player);
+  }
+
+  function scheduleWalkupFadeOut(player) {
+    if (walkupFadeTimeout) {
+      clearTimeout(walkupFadeTimeout);
+      walkupFadeTimeout = null;
+    }
+    if (!player.walkup) return;
 
     const startTime = player.walkup.startTime || 0;
     const duration = player.walkup.duration || globalDuration;
-
-    // Fade walk-up from background volume to full over 1 second
-    fadeIn(walkupAudio, 0.15, 1, 1000);
-
-    if (duration && duration > 0) {
-      // Song has been playing since the announcement started — calculate remaining time
-      const alreadyPlayed = walkupAudio.currentTime - startTime;
-      const remaining = duration - alreadyPlayed;
-      const fadeStart = (remaining - 2) * 1000;
-      setTimeout(() => {
-        if (playbackPhase === 'walkup' && currentPlayer === player && !isPaused) {
-          fadeOut(walkupAudio, 2000, () => finishPlayback());
-        }
-      }, Math.max(0, fadeStart));
+    const alreadyPlayed = walkupAudio.currentTime - startTime;
+    const remaining = duration - alreadyPlayed;
+    if (remaining <= 0) {
+      finishPlayback();
+      return;
     }
+    const fadeStartMs = Math.max(0, (remaining - 2) * 1000);
+    walkupFadeTimeout = setTimeout(() => {
+      walkupFadeTimeout = null;
+      if (playbackPhase === 'walkup' && currentPlayer === player && !isPaused) {
+        fadeOut(walkupAudio, 2000, () => finishPlayback());
+      }
+    }, fadeStartMs);
+  }
+
+  function seekTo(seconds) {
+    if (!currentPlayer || !playbackPhase) return;
+
+    const annDur = (announcementAudio.duration && isFinite(announcementAudio.duration))
+      ? announcementAudio.duration : 3;
+    const startTime = currentPlayer.walkup ? (currentPlayer.walkup.startTime || 0) : 0;
+    const total = getTotalDuration();
+    seconds = Math.max(0, Math.min(total, seconds));
+
+    // Cancel any pending fades
+    if (walkupFadeTimeout) {
+      clearTimeout(walkupFadeTimeout);
+      walkupFadeTimeout = null;
+    }
+    clearInterval(fadeInterval);
+
+    if (seconds < annDur) {
+      // In announcement phase
+      playbackPhase = 'announcement';
+      announcementAudio.currentTime = seconds;
+      if (!isPaused) announcementAudio.play().catch(() => {});
+
+      if (currentPlayer.walkup) {
+        walkupAudio.currentTime = startTime + seconds;
+        walkupAudio.volume = 0.15;
+        if (!isPaused) walkupAudio.play().catch(() => {});
+      }
+    } else {
+      // Past announcement → walkup phase
+      playbackPhase = 'walkup';
+      announcementAudio.pause();
+
+      if (currentPlayer.walkup) {
+        walkupAudio.currentTime = startTime + seconds;
+        walkupAudio.volume = 1;
+        if (!isPaused) walkupAudio.play().catch(() => {});
+        scheduleWalkupFadeOut(currentPlayer);
+      } else {
+        finishPlayback();
+        return;
+      }
+    }
+
+    // Reset timer baseline
+    playbackStartTime = Date.now() - (seconds * 1000);
+    totalPausedMs = 0;
+    if (isPaused) {
+      pausedAt = Date.now();
+    }
+    updatePlayPauseIcon();
   }
 
   function stopPlayback(withFade) {
     clearInterval(fadeInterval);
     clearInterval(progressInterval);
+    if (walkupFadeTimeout) {
+      clearTimeout(walkupFadeTimeout);
+      walkupFadeTimeout = null;
+    }
 
     if (withFade && playbackPhase) {
       const activeAudio = playbackPhase === 'walkup' ? walkupAudio : announcementAudio;
@@ -587,10 +914,8 @@
   function silenceAll() {
     announcementAudio.pause();
     announcementAudio.currentTime = 0;
-    announcementAudio.src = '';
     walkupAudio.pause();
     walkupAudio.currentTime = 0;
-    walkupAudio.src = '';
   }
 
   function finishPlayback() {
@@ -601,6 +926,7 @@
     clearHighlights();
     updatePlayPauseIcon();
     updateTransportState();
+    releaseWakeLock();
     playbackNumber.textContent = '';
     playbackName.textContent = 'No player selected';
     playbackStatus.textContent = '';
@@ -656,15 +982,7 @@
 
       const now = isPaused ? pausedAt : Date.now();
       const elapsed = (now - playbackStartTime - totalPausedMs) / 1000;
-
-      // Total = announcement duration + walkup duration
-      const annDur = announcementAudio.duration && isFinite(announcementAudio.duration)
-        ? announcementAudio.duration : 3;
-      const walkupDur = (currentPlayer.walkup)
-        ? (currentPlayer.walkup.duration || globalDuration)
-        : 0;
-      const total = annDur + walkupDur;
-
+      const total = getTotalDuration();
       const percent = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
 
       progressFill.style.width = percent + '%';
@@ -680,7 +998,6 @@
     playbackStatus.textContent = 'Playing';
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
-    timeTotal.textContent = '--:--';
   }
 
   function highlightPlaying(number) {
