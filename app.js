@@ -32,7 +32,7 @@
   const prevBtn = document.getElementById('prev-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const nextBtn = document.getElementById('next-btn');
-  const nextBatterBtn = document.getElementById('next-batter-btn');
+  const stopBatterBtn = document.getElementById('stop-batter-btn');
   const playIcon = document.getElementById('play-icon');
   const pauseIcon = document.getElementById('pause-icon');
   const progressFill = document.getElementById('progress-fill');
@@ -48,6 +48,7 @@
   async function init() {
     const resp = await fetch('roster.json');
     roster = await resp.json();
+    roster.sort((a, b) => a.number - b.number);
 
     const saved = localStorage.getItem('walkup-lineup');
     if (saved) {
@@ -447,7 +448,14 @@
     }
 
     nextBtn.addEventListener('click', advanceBatter);
-    nextBatterBtn.addEventListener('click', advanceBatter);
+    stopBatterBtn.addEventListener('click', () => {
+      stopPlayback(true);
+      // Advance to next batter so the next play/next-btn starts the right player
+      if (lineup.length > 0) {
+        currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
+        renderLineup();
+      }
+    });
 
     clearLineupBtn.addEventListener('click', () => {
       lineup = [];
@@ -477,7 +485,7 @@
 
     prevBtn.disabled = !hasLineup;
     nextBtn.disabled = !hasLineup;
-    nextBatterBtn.disabled = !hasLineup;
+    stopBatterBtn.disabled = !isPlaying;
     playPauseBtn.disabled = !hasLineup && !isPlaying;
 
     playbackBar.classList.toggle('active', isPlaying);
@@ -504,13 +512,17 @@
 
     const vol = 1;
     announcementAudio.src = player.announcement;
-    announcementAudio.volume = vol;
+    announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
     announcementAudio.play().catch(() => {});
 
+    // Start walk-up song quietly underneath the announcement
     if (player.walkup) {
+      const startTime = player.walkup.startTime || 0;
       walkupAudio.src = player.walkup.file;
-      walkupAudio.preload = 'auto';
+      walkupAudio.volume = 0.15;
+      walkupAudio.currentTime = startTime;
+      walkupAudio.play().catch(() => {});
     }
 
     startProgressTracking();
@@ -521,13 +533,11 @@
     playbackStatus.textContent = 'Walk-up';
     updatePlayPauseIcon();
 
-    const vol = 1;
     const startTime = player.walkup.startTime || 0;
     const duration = player.walkup.duration || globalDuration;
 
-    walkupAudio.volume = vol;
-    walkupAudio.currentTime = startTime;
-    walkupAudio.play().catch(() => {});
+    // Fade walk-up from background volume to full over 1 second
+    fadeIn(walkupAudio, 0.15, 1, 1000);
 
     if (duration && duration > 0) {
       const fadeStart = (duration - 2) * 1000;
@@ -578,6 +588,22 @@
     timeCurrent.textContent = '--:--';
     timeTotal.textContent = '--:--';
     progressFill.style.width = '0%';
+  }
+
+  function fadeIn(audio, fromVol, toVol, durationMs) {
+    audio.volume = fromVol;
+    const steps = 20;
+    const stepTime = durationMs / steps;
+    const volStep = (toVol - fromVol) / steps;
+    let step = 0;
+    const interval = setInterval(() => {
+      step++;
+      audio.volume = Math.min(toVol, fromVol + volStep * step);
+      if (step >= steps) {
+        clearInterval(interval);
+        audio.volume = toVol;
+      }
+    }, stepTime);
   }
 
   function fadeOut(audio, durationMs, onComplete) {

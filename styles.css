@@ -589,7 +589,7 @@ nav {
 }
 
 /* Next Batter — big tap target */
-#next-batter-btn {
+#stop-batter-btn {
   width: 100%;
   padding: 16px;
   border: none;
@@ -606,16 +606,16 @@ nav {
   min-height: 56px;
 }
 
-#next-batter-btn:hover:not(:disabled) {
+#stop-batter-btn:hover:not(:disabled) {
   background: #ffb340;
   box-shadow: 0 4px 20px rgba(244, 160, 32, 0.3);
 }
 
-#next-batter-btn:active:not(:disabled) {
+#stop-batter-btn:active:not(:disabled) {
   transform: scale(0.98);
 }
 
-#next-batter-btn:disabled {
+#stop-batter-btn:disabled {
   opacity: 0.2;
   cursor: default;
 }
