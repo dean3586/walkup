@@ -43,7 +43,6 @@
   const prevBtn = document.getElementById('prev-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const nextBtn = document.getElementById('next-btn');
-  const batterBtn = document.getElementById('batter-btn');
   const playIcon = document.getElementById('play-icon');
   const pauseIcon = document.getElementById('pause-icon');
   const progressBar = document.getElementById('progress-bar');
@@ -71,7 +70,6 @@
   const npPlayPauseBtn = document.getElementById('np-play-pause-btn');
   const npPlayIcon = document.getElementById('np-play-icon');
   const npPauseIcon = document.getElementById('np-pause-icon');
-  const npBatterBtn = document.getElementById('np-batter-btn');
   const npCurrentLabel = document.getElementById('np-current-label');
   const npArt = document.getElementById('np-art');
   const npSongName = document.getElementById('np-song-name');
@@ -553,11 +551,13 @@
       card.dataset.number = player.number;
 
       const hasWalkup = player.walkup !== null;
+      const dz = player._deezerTrack;
       card.innerHTML = `
         <div class="player-card-number">#${player.number}</div>
         <div class="player-card-info">
           <span class="player-card-first">${player.firstName}</span>
           <span class="player-card-last">${player.lastName}</span>
+          ${dz ? `<span class="player-card-song">${escapeHtml(dz.title)} · ${escapeHtml(dz.artist)}</span>` : ''}
         </div>
         <div class="player-card-right">
           ${hasWalkup
@@ -606,7 +606,7 @@
         let roleLabel = '';
         if (idx === currentBatterIdx) {
           role = 'at-bat';
-          roleLabel = 'AT BAT';
+          roleLabel = 'NOW BATTING';
         } else if (idx === onDeckIdx) {
           role = 'on-deck';
           roleLabel = 'ON DECK';
@@ -633,7 +633,10 @@
           </span>
           <span class="lineup-position">${idx + 1}</span>
           <span class="lineup-player-number">#${player.number}</span>
-          <span class="lineup-player-name">${player.firstName} ${player.lastName}</span>
+          <span class="lineup-player-info">
+            <span class="lineup-player-name">${player.firstName} ${player.lastName}</span>
+            ${player._deezerTrack ? `<span class="lineup-player-song">${escapeHtml(player._deezerTrack.title)} · ${escapeHtml(player._deezerTrack.artist)}</span>` : ''}
+          </span>
           ${roleLabel ? `<span class="lineup-role lineup-role-${role}">${roleLabel}</span>` : ''}
           <button class="lineup-remove" data-idx="${idx}">&times;</button>
         `;
@@ -795,7 +798,7 @@
 
       const dz = player._deezerTrack;
       const songInfo = dz
-        ? `<div class="song-info"><img class="song-info-art" src="${dz.art}" alt="">${escapeHtml(dz.title)} — ${escapeHtml(dz.artist)}</div>`
+        ? `<div class="song-info"><img class="song-info-art" src="${dz.art}" alt="">${escapeHtml(dz.title)} · ${escapeHtml(dz.artist)}</div>`
         : (hasWalkup ? '<div class="song-info song-info-file">Uploaded MP3</div>' : '');
 
       row.innerHTML = `
@@ -1165,37 +1168,20 @@
       updatePlayPauseIcon();
     });
 
-    function advanceBatter() {
+    function navigateBatter(delta) {
       if (lineup.length === 0) return;
-      currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
-      const num = lineup[currentBatterIdx];
-      const player = roster.find(p => p.number === num);
-      if (player) {
-        playPlayer(player);
-        renderLineup();
+      if (playbackPhase) {
+        stopPlayback(false, false); // stop immediately, don't auto-advance
       }
+      currentBatterIdx = (currentBatterIdx + delta + lineup.length) % lineup.length;
+      showBarFromLineup();
+      renderLineup();
+      updateTransportState();
+      updateNowPlaying();
     }
 
-    prevBtn.addEventListener('click', () => {
-      if (lineup.length === 0) return;
-      currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
-      const num = lineup[currentBatterIdx];
-      const player = roster.find(p => p.number === num);
-      if (player) {
-        playPlayer(player);
-        renderLineup();
-      }
-    });
-
-    nextBtn.addEventListener('click', advanceBatter);
-
-    batterBtn.addEventListener('click', () => {
-      if (playbackPhase) {
-        stopPlayback(true);
-      } else {
-        advanceBatter();
-      }
-    });
+    prevBtn.addEventListener('click', () => navigateBatter(-1));
+    nextBtn.addEventListener('click', () => navigateBatter(1));
 
     clearLineupBtn.addEventListener('click', async () => {
       if (lineup.length === 0) return;
@@ -1262,7 +1248,6 @@
     npPlayPauseBtn.addEventListener('click', () => playPauseBtn.click());
     npPrevBtn.addEventListener('click', () => prevBtn.click());
     npNextBtn.addEventListener('click', () => nextBtn.click());
-    npBatterBtn.addEventListener('click', () => batterBtn.click());
 
     npProgressBar.addEventListener('click', (e) => {
       if (!currentPlayer || !playbackPhase) return;
@@ -1340,7 +1325,7 @@
       return;
     }
 
-    npCurrentLabel.textContent = 'At Bat';
+    npCurrentLabel.textContent = 'Now Batting';
     npNumber.textContent = '#' + activePlayer.number;
     npName.textContent = activePlayer.firstName + ' ' + activePlayer.lastName;
 
@@ -1350,7 +1335,7 @@
     if (dz && dz.art) {
       const artUrl = dz.artLarge || dz.art;
       npArt.src = dz.art; // use medium for inline
-      npSongName.textContent = `${dz.title} — ${dz.artist}`;
+      npSongName.textContent = `${dz.title} · ${dz.artist}`;
       npSongLine.classList.remove('hidden');
       applyAlbumBackground(artUrl);
     } else {
@@ -1384,14 +1369,10 @@
 
     prevBtn.disabled = !hasLineup;
     nextBtn.disabled = !hasLineup;
-    batterBtn.disabled = !hasLineup;
-    batterBtn.textContent = isPlaying ? 'Stop Batter' : 'Next Batter';
     playPauseBtn.disabled = !hasLineup && !isPlaying;
 
     npPrevBtn.disabled = !hasLineup;
     npNextBtn.disabled = !hasLineup;
-    npBatterBtn.disabled = !hasLineup;
-    npBatterBtn.textContent = isPlaying ? 'Stop Batter' : 'Next Batter';
     npPlayPauseBtn.disabled = !hasLineup && !isPlaying;
 
     playbackBar.classList.toggle('active', isPlaying);
@@ -1408,7 +1389,7 @@
 
   // === Play a player ===
   function playPlayer(player) {
-    stopPlayback(false);
+    stopPlayback(false, false);
 
     currentPlayer = player;
     playbackPhase = 'announcement';
@@ -1575,7 +1556,7 @@
     updatePlayPauseIcon();
   }
 
-  function stopPlayback(withFade) {
+  function stopPlayback(withFade, autoAdvance = true) {
     clearInterval(fadeInterval);
     clearInterval(progressInterval);
     if (walkupFadeTimeout) {
@@ -1587,11 +1568,11 @@
       const activeAudio = playbackPhase === 'walkup' ? walkupAudio : announcementAudio;
       fadeOut(activeAudio, 1000, () => {
         silenceAll();
-        finishPlayback();
+        finishPlayback(autoAdvance);
       });
     } else {
       silenceAll();
-      finishPlayback();
+      finishPlayback(autoAdvance);
     }
   }
 
@@ -1602,24 +1583,23 @@
     walkupAudio.currentTime = 0;
   }
 
-  function finishPlayback() {
+  function finishPlayback(autoAdvance = true) {
     playbackPhase = null;
     currentPlayer = null;
     isPaused = false;
     clearInterval(progressInterval);
     clearHighlights();
-    updatePlayPauseIcon();
-    updateTransportState();
     releaseWakeLock();
     clearMediaSession();
-    playbackNumber.textContent = '';
-    playbackName.textContent = 'No player selected';
-    playbackStatus.textContent = '';
-    playbackArt.classList.add('hidden');
-    playbackSongName.classList.add('hidden');
-    timeCurrent.textContent = '--:--';
-    timeTotal.textContent = '--:--';
-    progressFill.style.width = '0%';
+
+    if (autoAdvance && lineup.length > 0 && currentBatterIdx >= 0) {
+      currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
+    }
+
+    showBarFromLineup();
+    updatePlayPauseIcon();
+    updateTransportState();
+    renderLineup();
   }
 
   function fadeIn(audio, fromVol, toVol, durationMs) {
@@ -1684,10 +1664,38 @@
   }
 
   // === UI helpers ===
+  function showBarFromLineup() {
+    const player = getPlayerAtLineupIdx(currentBatterIdx);
+    if (!player) {
+      playbackNumber.textContent = '';
+      playbackName.textContent = 'No player selected';
+      playbackStatus.textContent = '';
+      playbackArt.classList.add('hidden');
+      playbackSongName.classList.add('hidden');
+      return;
+    }
+    playbackNumber.textContent = '#' + player.number;
+    playbackName.textContent = player.firstName + ' ' + player.lastName;
+    playbackStatus.textContent = playbackPhase ? 'Now Batting' : 'Up Next';
+    const dz = player._deezerTrack;
+    if (dz && dz.art) {
+      playbackArt.src = dz.art;
+      playbackArt.classList.remove('hidden');
+      playbackSongName.textContent = `${dz.title} · ${dz.artist}`;
+      playbackSongName.classList.remove('hidden');
+    } else {
+      playbackArt.classList.add('hidden');
+      playbackSongName.classList.add('hidden');
+    }
+    timeCurrent.textContent = '--:--';
+    timeTotal.textContent = '--:--';
+    progressFill.style.width = '0%';
+  }
+
   function showPlaybackInfo(player) {
     playbackNumber.textContent = '#' + player.number;
     playbackName.textContent = player.firstName + ' ' + player.lastName;
-    playbackStatus.textContent = 'At Bat';
+    playbackStatus.textContent = 'Now Batting';
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
 
@@ -1696,7 +1704,7 @@
     if (dz && dz.art) {
       playbackArt.src = dz.art;
       playbackArt.classList.remove('hidden');
-      playbackSongName.textContent = `${dz.title} — ${dz.artist}`;
+      playbackSongName.textContent = `${dz.title} · ${dz.artist}`;
       playbackSongName.classList.remove('hidden');
     } else {
       playbackArt.classList.add('hidden');

@@ -196,6 +196,16 @@ main {
   text-overflow: ellipsis;
 }
 
+.player-card-song {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .player-card-right {
   flex-shrink: 0;
 }
@@ -431,14 +441,28 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.lineup-player-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .lineup-player-name {
   font-size: 0.9rem;
   font-weight: 500;
-  flex: 1;
-  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.lineup-player-song {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
 }
 
 .lineup-remove {
@@ -676,46 +700,16 @@ main {
   font-weight: 500;
 }
 
-#playback-timer {
-  font-size: 0.7rem;
+#playback-bar #playback-timer {
+  text-align: center;
+  font-size: 0.65rem;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  margin-left: auto;
+  padding-top: 4px;
 }
+
 
 /* Next Batter — big tap target */
-#batter-btn {
-  width: 100%;
-  padding: 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--bg);
-  font-size: 1.05rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all var(--dur-m) var(--ease);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-top: 8px;
-  min-height: 56px;
-}
-
-#batter-btn:hover:not(:disabled) {
-  background: #ffb340;
-  box-shadow: 0 4px 20px rgba(244, 160, 32, 0.3);
-}
-
-#batter-btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-#batter-btn:disabled {
-  opacity: 0.2;
-  cursor: default;
-}
 
 /* Transport controls — prev/play/next centered */
 #transport {
@@ -723,6 +717,7 @@ main {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin-bottom: 8px;
 }
 
 .transport-btn {
@@ -1170,6 +1165,9 @@ main {
   margin-top: 24px;
   text-align: center;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #np-song-line {
@@ -1219,8 +1217,7 @@ main {
 #np-progress {
   width: 100%;
   max-width: 480px;
-  margin-top: auto;
-  padding-top: 32px;
+  padding-top: 16px;
 }
 
 #np-progress-bar {
@@ -1269,7 +1266,8 @@ main {
   align-items: center;
   justify-content: center;
   gap: 32px;
-  margin-top: 28px;
+  margin-top: auto;
+  padding-top: 24px;
   width: 100%;
   max-width: 480px;
 }
@@ -1327,40 +1325,9 @@ main {
   box-shadow: none;
 }
 
-#np-batter-btn {
-  margin-top: 28px;
-  width: 100%;
-  max-width: 480px;
-  padding: 18px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all var(--dur-m) var(--ease);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-#np-batter-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--border-hover);
-}
-
-#np-batter-btn:active:not(:disabled) {
-  transform: scale(0.99);
-}
-
-#np-batter-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
 
 #np-up-next {
-  margin-top: 24px;
+  margin-top: 20px;
   width: 100%;
   max-width: 480px;
   display: flex;
