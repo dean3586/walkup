@@ -588,7 +588,7 @@ main {
 
 #progress-bar {
   height: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   cursor: pointer;
   position: relative;
   display: flex;
@@ -601,7 +601,8 @@ main {
   left: 0;
   right: 0;
   height: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
   pointer-events: none;
 }
 
@@ -616,6 +617,7 @@ main {
   top: 50%;
   transform: translateY(-50%);
   height: 3px;
+  border-radius: 2px;
   background: var(--accent);
   width: 0%;
   transition: width 0.15s linear, height 0.15s var(--ease);
@@ -907,16 +909,8 @@ main {
 .song-setting-control {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.song-setting-label {
-  font-size: 0.65rem;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-right: 4px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .start-time-btn {
@@ -954,19 +948,17 @@ main {
 }
 
 .start-time-preview {
-  width: 30px;
-  height: 30px;
+  margin-left: auto;
+  padding: 6px 14px;
   border: 1px solid rgba(0, 166, 81, 0.25);
   border-radius: 6px;
   background: var(--green-soft);
   color: var(--green);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all var(--dur-s) var(--ease);
-  margin-left: 4px;
+  letter-spacing: 0.03em;
 }
 
 .remove-upload-btn {

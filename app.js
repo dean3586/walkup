@@ -815,15 +815,6 @@
           </div>
         </div>
         ${songInfo}
-        ${hasWalkup ? `
-          <div class="song-setting-control">
-            <label class="song-setting-label">Start</label>
-            <button class="start-time-btn minus" data-number="${player.number}">-</button>
-            <span class="start-time-value" data-number="${player.number}">${formatTime(startTime)}</span>
-            <button class="start-time-btn plus" data-number="${player.number}">+</button>
-            <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
-          </div>
-        ` : ''}
         <div class="waveform-container" data-number="${player.number}">
           ${hasWalkup
             ? `<canvas class="waveform-canvas" data-number="${player.number}"></canvas>
@@ -831,6 +822,14 @@
                <div class="waveform-overlay">Drop MP3 to replace</div>`
             : `<div class="waveform-empty">Drop MP3 or use Search above</div>`}
         </div>
+        ${hasWalkup ? `
+          <div class="song-setting-control">
+            <button class="start-time-btn minus" data-number="${player.number}">-</button>
+            <span class="start-time-value" data-number="${player.number}">${formatTime(startTime)}</span>
+            <button class="start-time-btn plus" data-number="${player.number}">+</button>
+            <button class="start-time-preview" data-number="${player.number}" title="Preview">Preview</button>
+          </div>
+        ` : ''}
       `;
 
       // Drop target on the waveform container
