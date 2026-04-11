@@ -323,10 +323,50 @@ main {
   box-shadow: 0 0 25px var(--accent-glow);
 }
 
-.lineup-item.current {
-  border: 2px solid var(--accent);
+/* Lineup role states */
+.lineup-item.at-bat {
+  border-left: 3px solid var(--accent);
   background: var(--accent-soft);
-  padding: 13px 13px 13px 5px; /* compensate for thicker border */
+  padding-left: 11px;
+}
+
+.lineup-item.on-deck {
+  border-left: 3px solid var(--green);
+  background: var(--green-soft);
+  padding-left: 11px;
+}
+
+.lineup-item.in-the-hole {
+  border-left: 3px solid rgba(100, 140, 255, 0.4);
+  background: rgba(100, 140, 255, 0.05);
+  padding-left: 11px;
+}
+
+/* Role badges */
+.lineup-role {
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lineup-role-at-bat {
+  background: rgba(244, 160, 32, 0.2);
+  color: var(--accent);
+}
+
+.lineup-role-on-deck {
+  background: rgba(0, 166, 81, 0.15);
+  color: var(--green);
+}
+
+.lineup-role-in-the-hole {
+  background: rgba(100, 140, 255, 0.12);
+  color: rgba(130, 165, 255, 0.9);
 }
 
 /* Drag handle */
@@ -902,6 +942,32 @@ main {
   margin-left: 4px;
 }
 
+.remove-upload-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-glass);
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-s) var(--ease);
+  margin-left: 2px;
+}
+
+.remove-upload-btn:hover {
+  border-color: rgba(204, 25, 34, 0.35);
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.remove-upload-btn:active {
+  transform: scale(0.92);
+}
+
 .start-time-preview:hover {
   background: rgba(0, 166, 81, 0.18);
   border-color: rgba(0, 166, 81, 0.4);
@@ -1251,6 +1317,20 @@ main {
 
 #np-up-next {
   margin-top: 24px;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#np-next-batter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.np-role-row {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1258,19 +1338,29 @@ main {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 18px;
-  width: 100%;
-  max-width: 480px;
 }
 
-.np-up-next-label {
-  font-size: 0.65rem;
-  color: var(--text-tertiary);
+.np-role-label {
+  font-size: 0.6rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 500;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
-#np-next-batter {
+.np-role-label.on-deck {
+  background: rgba(0, 166, 81, 0.15);
+  color: var(--green);
+}
+
+.np-role-label.in-the-hole {
+  background: rgba(100, 140, 255, 0.12);
+  color: rgba(130, 165, 255, 0.9);
+}
+
+.np-role-name {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-primary);

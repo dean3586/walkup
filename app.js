@@ -70,6 +70,7 @@
   const npPlayIcon = document.getElementById('np-play-icon');
   const npPauseIcon = document.getElementById('np-pause-icon');
   const npBatterBtn = document.getElementById('np-batter-btn');
+  const npCurrentLabel = document.getElementById('np-current-label');
   const npNextBatter = document.getElementById('np-next-batter');
 
   // === IndexedDB for uploaded audio files ===
@@ -117,11 +118,37 @@
       if (blob) {
         const url = URL.createObjectURL(blob);
         objectUrlCache[player.number] = url;
+        // Remember the original (static) walkup file if any
         if (!player.walkup) {
           player.walkup = { startTime: 0 };
+        } else if (player.walkup.file && !player._originalFile) {
+          player._originalFile = player.walkup.file;
         }
         player.walkup.file = url;
+        player._isUploaded = true;
       }
+    }
+  }
+
+  async function deleteUploadedAudio(player) {
+    const db = await openDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(player.number);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    if (objectUrlCache[player.number]) {
+      URL.revokeObjectURL(objectUrlCache[player.number]);
+      delete objectUrlCache[player.number];
+    }
+    delete audioBufferCache[player.number];
+    player._isUploaded = false;
+    if (player._originalFile) {
+      player.walkup.file = player._originalFile;
+      delete player._originalFile;
+    } else {
+      player.walkup = null;
     }
   }
 
@@ -190,6 +217,8 @@
     renderSettings();
     setupTabs();
     setupControls();
+    setupNowPlayingGestures();
+    setupMediaSessionHandlers();
     updateTransportState();
   }
 
@@ -238,21 +267,53 @@
     });
   }
 
+  // === Lineup helpers ===
+  function getOnDeckIdx() {
+    if (lineup.length === 0 || currentBatterIdx < 0) return -1;
+    return (currentBatterIdx + 1) % lineup.length;
+  }
+
+  function getInTheHoleIdx() {
+    if (lineup.length < 3 || currentBatterIdx < 0) return -1;
+    return (currentBatterIdx + 2) % lineup.length;
+  }
+
+  function getPlayerAtLineupIdx(idx) {
+    if (idx < 0 || idx >= lineup.length) return null;
+    return roster.find(p => p.number === lineup[idx]) || null;
+  }
+
   // === Lineup rendering ===
   function renderLineup() {
     if (lineup.length === 0) {
       lineupList.innerHTML = '<div class="empty-lineup">No batting order set.<br>Tap players below to build the lineup.</div>';
     } else {
+      const onDeckIdx = getOnDeckIdx();
+      const holeIdx = getInTheHoleIdx();
+
       lineupList.innerHTML = '';
       lineup.forEach((num, idx) => {
         const player = roster.find(p => p.number === num);
         if (!player) return;
 
+        // Determine role
+        let role = '';
+        let roleLabel = '';
+        if (idx === currentBatterIdx) {
+          role = 'at-bat';
+          roleLabel = 'AT BAT';
+        } else if (idx === onDeckIdx) {
+          role = 'on-deck';
+          roleLabel = 'ON DECK';
+        } else if (idx === holeIdx) {
+          role = 'in-the-hole';
+          roleLabel = 'IN THE HOLE';
+        }
+
         const item = document.createElement('div');
-        item.className = 'lineup-item';
+        item.className = 'lineup-item' + (role ? ' ' + role : '');
         item.dataset.number = num;
         item.dataset.idx = idx;
-        if (idx === currentBatterIdx) item.classList.add('current');
         if (currentPlayer && currentPlayer.number === num && playbackPhase) {
           item.classList.add('playing');
         }
@@ -268,6 +329,7 @@
           <span class="lineup-position">${idx + 1}</span>
           <span class="lineup-player-number">#${player.number}</span>
           <span class="lineup-player-name">${player.firstName} ${player.lastName}</span>
+          ${roleLabel ? `<span class="lineup-role lineup-role-${role}">${roleLabel}</span>` : ''}
           <button class="lineup-remove" data-idx="${idx}">&times;</button>
         `;
 
@@ -439,6 +501,9 @@
               <button class="start-time-btn plus" data-number="${player.number}">+</button>
             ` : ''}
             <button class="start-time-preview" data-number="${player.number}" title="Preview">&#9654;</button>
+            ${player._isUploaded ? `
+              <button class="remove-upload-btn" data-number="${player.number}" title="Remove uploaded song">&#10005;</button>
+            ` : ''}
           </div>
         </div>
         <div class="waveform-container" data-number="${player.number}">
@@ -483,6 +548,25 @@
         if (!player) return;
         playPlayer(player);
         playbackStatus.textContent = 'Preview';
+      });
+    });
+
+    // Wire up remove uploaded song buttons
+    songSettingsList.querySelectorAll('.remove-upload-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const num = parseInt(btn.dataset.number);
+        const player = roster.find(p => p.number === num);
+        if (!player) return;
+        if (!confirm(`Remove uploaded walk-up song for #${player.number} ${player.firstName} ${player.lastName}?`)) return;
+
+        try {
+          await deleteUploadedAudio(player);
+          renderRoster();
+          renderSettings();
+          renderAllWaveforms();
+        } catch (err) {
+          alert('Failed to remove song: ' + err.message);
+        }
       });
     });
 
@@ -638,8 +722,11 @@
 
         if (!player.walkup) {
           player.walkup = { startTime: 0 };
+        } else if (player.walkup.file && !player._originalFile && !player._isUploaded) {
+          player._originalFile = player.walkup.file;
         }
         player.walkup.file = url;
+        player._isUploaded = true;
 
         // Clear waveform cache so it re-decodes
         delete audioBufferCache[player.number];
@@ -689,12 +776,14 @@
         totalPausedMs += Date.now() - pausedAt;
         isPaused = false;
         acquireWakeLock();
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       } else {
         announcementAudio.pause();
         walkupAudio.pause();
         pausedAt = Date.now();
         isPaused = true;
         releaseWakeLock();
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       }
       updatePlayPauseIcon();
     });
@@ -788,29 +877,93 @@
     });
   }
 
+  // === Swipe-down gesture for Now Playing ===
+  function setupNowPlayingGestures() {
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+
+    nowPlaying.addEventListener('touchstart', (e) => {
+      // Only drag if the touch started on background or specific drag areas,
+      // not on buttons or interactive elements
+      if (e.target.closest('button, canvas, input, #np-progress-bar')) return;
+      startY = e.touches[0].clientY;
+      currentY = startY;
+      isDragging = true;
+      nowPlaying.style.transition = 'none';
+    }, { passive: true });
+
+    nowPlaying.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      currentY = e.touches[0].clientY;
+      const delta = Math.max(0, currentY - startY);
+      nowPlaying.style.transform = `translateY(${delta}px)`;
+      nowPlaying.style.opacity = String(Math.max(0.5, 1 - delta / 600));
+    }, { passive: true });
+
+    nowPlaying.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      nowPlaying.style.transition = '';
+      const delta = currentY - startY;
+      if (delta > 120) {
+        // Collapse
+        nowPlaying.classList.add('hidden');
+      }
+      nowPlaying.style.transform = '';
+      nowPlaying.style.opacity = '';
+    });
+
+    nowPlaying.addEventListener('touchcancel', () => {
+      isDragging = false;
+      nowPlaying.style.transition = '';
+      nowPlaying.style.transform = '';
+      nowPlaying.style.opacity = '';
+    });
+  }
+
   function updateNowPlaying() {
-    if (!currentPlayer) {
+    // Show currently playing player, OR the current batter in the lineup, OR nothing
+    let activePlayer = currentPlayer;
+    if (!activePlayer && lineup.length > 0 && currentBatterIdx >= 0) {
+      activePlayer = getPlayerAtLineupIdx(currentBatterIdx);
+    }
+
+    if (!activePlayer) {
       npNumber.textContent = '--';
-      npName.textContent = 'No batter';
-      npNextBatter.textContent = '—';
+      npName.textContent = 'No batter selected';
+      npNextBatter.innerHTML = '—';
+      npCurrentLabel.textContent = '';
+      if (!playbackPhase) {
+        npProgressFill.style.width = '0%';
+        npTimeCurrent.textContent = '0:00';
+        npTimeTotal.textContent = '0:00';
+      }
       return;
     }
-    npNumber.textContent = '#' + currentPlayer.number;
-    npName.textContent = currentPlayer.firstName + ' ' + currentPlayer.lastName;
 
-    // Up next from lineup
-    if (lineup.length > 0 && currentBatterIdx >= 0) {
-      const nextIdx = (currentBatterIdx + 1) % lineup.length;
-      const nextNum = lineup[nextIdx];
-      const nextPlayer = roster.find(p => p.number === nextNum);
-      if (nextPlayer) {
-        npNextBatter.textContent = `#${nextPlayer.number} ${nextPlayer.firstName} ${nextPlayer.lastName}`;
-      } else {
-        npNextBatter.textContent = '—';
-      }
-    } else {
-      npNextBatter.textContent = '—';
+    npCurrentLabel.textContent = 'At Bat';
+    npNumber.textContent = '#' + activePlayer.number;
+    npName.textContent = activePlayer.firstName + ' ' + activePlayer.lastName;
+
+    if (!playbackPhase) {
+      npProgressFill.style.width = '0%';
+      npTimeCurrent.textContent = '0:00';
+      npTimeTotal.textContent = '0:00';
     }
+
+    // On deck + in the hole
+    const onDeckPlayer = getPlayerAtLineupIdx(getOnDeckIdx());
+    const holePlayer = getPlayerAtLineupIdx(getInTheHoleIdx());
+
+    let nextHtml = '';
+    if (onDeckPlayer) {
+      nextHtml += `<div class="np-role-row"><span class="np-role-label on-deck">On Deck</span><span class="np-role-name">#${onDeckPlayer.number} ${onDeckPlayer.firstName} ${onDeckPlayer.lastName}</span></div>`;
+    }
+    if (holePlayer) {
+      nextHtml += `<div class="np-role-row"><span class="np-role-label in-the-hole">In the Hole</span><span class="np-role-name">#${holePlayer.number} ${holePlayer.firstName} ${holePlayer.lastName}</span></div>`;
+    }
+    npNextBatter.innerHTML = nextHtml || '—';
   }
 
   function updateTransportState() {
@@ -881,7 +1034,50 @@
     }
 
     acquireWakeLock();
+    setMediaSessionMetadata(player);
     startProgressTracking();
+  }
+
+  // === Media Session (lock screen controls) ===
+  function setMediaSessionMetadata(player) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `#${player.number} ${player.firstName} ${player.lastName}`,
+        artist: 'Now Batting',
+        album: 'Walk-Up Music',
+        artwork: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    } catch (e) {}
+  }
+
+  function setupMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (isPaused || !playbackPhase) playPauseBtn.click();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (!isPaused && playbackPhase) playPauseBtn.click();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => prevBtn.click());
+      navigator.mediaSession.setActionHandler('nexttrack', () => nextBtn.click());
+      navigator.mediaSession.setActionHandler('stop', () => {
+        if (playbackPhase) stopPlayback(true);
+      });
+    } catch (e) {}
+  }
+
+  function clearMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+    } catch (e) {}
   }
 
   function startWalkup(player) {
@@ -1003,6 +1199,7 @@
     updatePlayPauseIcon();
     updateTransportState();
     releaseWakeLock();
+    clearMediaSession();
     playbackNumber.textContent = '';
     playbackName.textContent = 'No player selected';
     playbackStatus.textContent = '';
@@ -1076,7 +1273,7 @@
   function showPlaybackInfo(player) {
     playbackNumber.textContent = '#' + player.number;
     playbackName.textContent = player.firstName + ' ' + player.lastName;
-    playbackStatus.textContent = 'Playing';
+    playbackStatus.textContent = 'At Bat';
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
   }
@@ -1091,6 +1288,22 @@
   function clearHighlights() {
     document.querySelectorAll('.playing').forEach(el => el.classList.remove('playing'));
   }
+
+  // === Service Worker (PWA) ===
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  // === Warn before closing during playback ===
+  window.addEventListener('beforeunload', (e) => {
+    if (playbackPhase) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+  });
 
   // === Start ===
   init();
