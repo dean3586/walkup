@@ -19,6 +19,24 @@
   let totalPausedMs = 0;
   let wakeLock = null;
 
+  // === Audio mix tuning ===
+  const DUCK_VOLUME = 0.4;    // music volume while the announcer is talking
+  const FULL_VOLUME = 1;      // music volume after the announcement finishes
+  const RAMP_UP_MS = 1000;    // fade from ducked -> full once the announcement ends
+  const END_FADE_MS = 2000;   // fade-out length at the end of the walk-up song
+  const END_FADE_LEAD = 2;    // seconds before the end to begin the fade-out
+
+  // === Cloud sync (shared team config) ===
+  // One shared row in Supabase keeps selections + settings in sync across
+  // devices. The publishable key is public by design; RLS limits anon access
+  // to this single table only.
+  const SUPABASE_URL = 'https://uijbrrvchglumgvleeoo.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL';
+  const CONFIG_ROW = 'default';
+  const SYNC_ENDPOINT = `${SUPABASE_URL}/rest/v1/walkup_config`;
+  let syncTimer = null;
+  let applyingRemote = false; // guard so applying a pull doesn't echo a push
+
   // === Drag (lineup reorder) state ===
   let dragItem = null;
   let dragIdx = -1;
@@ -134,26 +152,29 @@
     }
   }
 
-  async function deleteUploadedAudio(player) {
+  async function removeAudioFile(playerNumber) {
     const db = await openDB();
-    await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).delete(player.number);
+      tx.objectStore(STORE_NAME).delete(playerNumber);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
+  }
+
+  async function deleteUploadedAudio(player) {
+    await removeAudioFile(player.number).catch(() => {});
     if (objectUrlCache[player.number]) {
       URL.revokeObjectURL(objectUrlCache[player.number]);
       delete objectUrlCache[player.number];
     }
     delete audioBufferCache[player.number];
     player._isUploaded = false;
-    if (player._originalFile) {
-      player.walkup.file = player._originalFile;
-      delete player._originalFile;
-    } else {
-      player.walkup = null;
-    }
+    player._isDeezer = false;
+    delete player._deezerTrack;
+    player.walkup = null;
+    saveDeezerInfo();
+    saveStartTimes();
   }
 
   // === Deezer Search ===
@@ -304,45 +325,57 @@
   async function assignDeezerTrack(playerNumber, track) {
     const player = roster.find(p => p.number === playerNumber);
     if (!player) return;
+    if (!track.preview) throw new Error('No preview available for this track');
 
-    // Download the preview MP3 and store in IndexedDB
-    const resp = await fetch(track.preview);
-    const blob = await resp.blob();
-    await saveAudioFile(playerNumber, blob);
-
-    // Revoke old URL
+    // Stream directly from the Deezer preview URL — no MP3 download/storage.
+    // Clean up any old uploaded blob so it can't shadow the new URL on reload.
     if (objectUrlCache[playerNumber]) {
       URL.revokeObjectURL(objectUrlCache[playerNumber]);
+      delete objectUrlCache[playerNumber];
     }
+    await removeAudioFile(playerNumber).catch(() => {});
 
-    const url = URL.createObjectURL(blob);
-    objectUrlCache[playerNumber] = url;
-
-    if (!player.walkup) {
-      player.walkup = { startTime: 0 };
-    } else if (player.walkup.file && !player._originalFile && !player._isUploaded) {
-      player._originalFile = player.walkup.file;
-    }
-    player.walkup.file = url;
-    player._isUploaded = true;
+    if (!player.walkup) player.walkup = { startTime: 0 };
+    player.walkup.file = track.preview;
+    player._isDeezer = true;
+    player._isUploaded = false;
     player._deezerTrack = {
+      id: track.id,
       title: track.title_short || track.title,
       artist: track.artist?.name || '',
       art: track.album?.cover_medium || track.album?.cover_small || '',
       artLarge: track.album?.cover_xl || track.album?.cover_big || track.album?.cover_medium || '',
     };
 
-    // Persist deezer track info
+    // Persist automatically (track id + metadata; the preview URL is cached
+    // but re-resolved on load since Deezer preview URLs expire)
     saveDeezerInfo();
+    saveStartTimes();
     delete audioBufferCache[playerNumber];
   }
 
-  function saveDeezerInfo() {
+  // Builds the Deezer-picks map (keyed by player number).
+  function buildDeezerInfo() {
     const info = {};
     roster.forEach(p => {
-      if (p._deezerTrack) info[p.number] = p._deezerTrack;
+      if (!p._deezerTrack) return;
+      info[p.number] = {
+        id: p._deezerTrack.id,
+        title: p._deezerTrack.title,
+        artist: p._deezerTrack.artist,
+        art: p._deezerTrack.art,
+        artLarge: p._deezerTrack.artLarge,
+        file: (p._isDeezer && p.walkup) ? p.walkup.file : undefined,
+      };
     });
-    localStorage.setItem('walkup-deezer-info', JSON.stringify(info));
+    return info;
+  }
+
+  // Persists Deezer picks to localStorage (offline cache) and queues a push
+  // to the shared cloud config so selections sync across devices.
+  function saveDeezerInfo() {
+    localStorage.setItem('walkup-deezer-info', JSON.stringify(buildDeezerInfo()));
+    scheduleSync();
   }
 
   function loadDeezerInfo() {
@@ -351,9 +384,68 @@
     try {
       const info = JSON.parse(saved);
       roster.forEach(p => {
-        if (info[p.number]) p._deezerTrack = info[p.number];
+        const d = info[p.number];
+        if (!d) return;
+        p._deezerTrack = { id: d.id, title: d.title, artist: d.artist, art: d.art, artLarge: d.artLarge };
+        if (d.id || d.file) {
+          if (!p.walkup) p.walkup = { startTime: 0 };
+          if (d.file) p.walkup.file = d.file; // cached URL, may be stale until refreshed
+          p._isDeezer = true;
+        }
       });
     } catch (e) {}
+  }
+
+  // Deezer preview URLs expire, so re-resolve a fresh one from the stored
+  // track id. Runs in the background on load; falls back to the cached URL.
+  function resolveDeezerPreview(trackId) {
+    return new Promise((resolve) => {
+      const cbName = '_dzTrack' + trackId + '_' + Math.floor(performance.now());
+      const script = document.createElement('script');
+      let settled = false;
+      function cleanup() { delete window[cbName]; script.remove(); }
+      window[cbName] = (data) => {
+        if (settled) return;
+        settled = true;
+        resolve(data && data.preview ? data.preview : null);
+        cleanup();
+      };
+      script.onerror = () => { if (!settled) { settled = true; resolve(null); cleanup(); } };
+      script.src = `https://api.deezer.com/track/${trackId}?output=jsonp&callback=${cbName}`;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function refreshDeezerUrls() {
+    const tasks = roster
+      .filter(p => p._isDeezer && p._deezerTrack && p._deezerTrack.id)
+      .map(async (p) => {
+        const fresh = await resolveDeezerPreview(p._deezerTrack.id);
+        if (fresh) {
+          if (!p.walkup) p.walkup = { startTime: 0 };
+          p.walkup.file = fresh;
+        }
+      });
+    if (tasks.length === 0) return;
+    await Promise.all(tasks);
+    saveDeezerInfo();
+  }
+
+  // Songs baked into roster.json (committed to the repo) carry their own
+  // title/artist/art so they display without per-device localStorage.
+  // Local picks (loadDeezerInfo) still override these afterwards.
+  function hydrateBakedSongs() {
+    roster.forEach(p => {
+      if (p.walkup && p.walkup.title && !p._deezerTrack) {
+        p._deezerTrack = {
+          title: p.walkup.title,
+          artist: p.walkup.artist || '',
+          art: p.walkup.art || '',
+          artLarge: p.walkup.artLarge || p.walkup.art || '',
+        };
+        if (p.walkup.file) p._isDeezer = true;
+      }
+    });
   }
 
   function showConfirm(message, okLabel = 'Remove') {
@@ -480,12 +572,137 @@
     }
   });
 
+  // === Cloud sync helpers ===
+  function collectConfigData() {
+    return {
+      lineup: lineup,
+      globalDuration: globalDuration,
+      startTimes: buildStartTimes(),
+      deezer: buildDeezerInfo(),
+    };
+  }
+
+  function configHasContent(cfg) {
+    return (cfg.lineup && cfg.lineup.length) ||
+      (cfg.deezer && Object.keys(cfg.deezer).length) ||
+      (cfg.startTimes && Object.keys(cfg.startTimes).length);
+  }
+
+  // Apply a config blob pulled from the cloud into local state + cache.
+  function applyConfigData(data) {
+    if (!data || typeof data !== 'object') return;
+    applyingRemote = true;
+    try {
+      // Lineup
+      if (Array.isArray(data.lineup)) {
+        const rosterNums = new Set(roster.map(p => p.number));
+        lineup = data.lineup.filter(n => rosterNums.has(n));
+        localStorage.setItem('walkup-lineup', JSON.stringify(lineup));
+      }
+
+      // Global duration
+      if (typeof data.globalDuration === 'number') {
+        globalDuration = data.globalDuration;
+        localStorage.setItem('walkup-global-duration', globalDuration);
+        if (globalDurationSlider) {
+          globalDurationSlider.value = globalDuration;
+          globalDurationLabel.textContent = globalDuration + 's';
+        }
+      }
+
+      // Deezer selections — clear previously-synced picks, then apply remote.
+      // Device-local uploads (_isUploaded) are left untouched (they don't sync).
+      const deezer = data.deezer || {};
+      roster.forEach(p => {
+        if (p._isDeezer) {
+          delete p._deezerTrack;
+          p._isDeezer = false;
+          p.walkup = null;
+        }
+      });
+      Object.keys(deezer).forEach(numStr => {
+        const p = roster.find(pp => pp.number === Number(numStr));
+        if (!p) return;
+        const d = deezer[numStr];
+        p._deezerTrack = { id: d.id, title: d.title, artist: d.artist, art: d.art, artLarge: d.artLarge };
+        if (d.id || d.file) {
+          if (!p.walkup) p.walkup = { startTime: 0 };
+          if (d.file) p.walkup.file = d.file;
+          p._isDeezer = true;
+        }
+      });
+      localStorage.setItem('walkup-deezer-info', JSON.stringify(deezer));
+
+      // Start times
+      const startTimes = data.startTimes || {};
+      roster.forEach(p => {
+        if (p.walkup && startTimes[p.number] !== undefined) {
+          p.walkup.startTime = startTimes[p.number];
+        }
+      });
+      localStorage.setItem('walkup-start-times', JSON.stringify(startTimes));
+
+      renderRoster();
+      renderLineup();
+      renderSettings();
+      renderAllWaveforms();
+      updateTransportState();
+    } finally {
+      applyingRemote = false;
+    }
+    refreshDeezerUrls().catch(() => {});
+  }
+
+  async function remotePull() {
+    if (syncTimer) return; // a local change is pending; don't clobber it
+    try {
+      const res = await fetch(`${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}&select=data`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      });
+      if (!res.ok) return;
+      const rows = await res.json();
+      const data = rows[0] && rows[0].data;
+      if (data && Object.keys(data).length > 0) {
+        applyConfigData(data);
+      } else {
+        // Cloud is empty — seed it from this device's existing selections.
+        const local = collectConfigData();
+        if (configHasContent(local)) remotePush();
+      }
+    } catch (e) {}
+  }
+
+  function scheduleSync() {
+    if (applyingRemote) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => { syncTimer = null; remotePush(); }, 800);
+  }
+
+  async function remotePush() {
+    try {
+      await fetch(`${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}`, {
+        method: 'PATCH',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({ data: collectConfigData(), updated_at: new Date().toISOString() }),
+      });
+    } catch (e) {}
+  }
+
+  // Pull others' changes when returning to the app.
+  window.addEventListener('focus', () => remotePull());
+
   // === Init ===
   async function init() {
     const resp = await fetch('roster.json');
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
 
+    hydrateBakedSongs();
     await loadUploadedAudio();
     loadDeezerInfo();
 
@@ -523,6 +740,13 @@
     setupNowPlayingGestures();
     setupMediaSessionHandlers();
     updateTransportState();
+
+    // Refresh expiring Deezer preview URLs in the background.
+    refreshDeezerUrls().catch(() => {});
+
+    // Pull the shared cloud config (applies + re-renders if present, or seeds
+    // the cloud from this device's existing selections if empty).
+    remotePull();
   }
 
   // === Tab switching ===
@@ -780,6 +1004,7 @@
 
   function saveLineup() {
     localStorage.setItem('walkup-lineup', JSON.stringify(lineup));
+    scheduleSync();
   }
 
   // === Settings rendering ===
@@ -809,7 +1034,7 @@
           </div>
           <div class="song-setting-actions">
             <button class="search-song-btn" data-number="${player.number}">Search</button>
-            ${player._isUploaded ? `
+            ${(player._isUploaded || player._isDeezer) ? `
               <button class="remove-upload-btn" data-number="${player.number}" title="Remove song">&#10005;</button>
             ` : ''}
           </div>
@@ -947,12 +1172,17 @@
     return m + ':' + String(s).padStart(2, '0');
   }
 
-  function saveStartTimes() {
+  function buildStartTimes() {
     const times = {};
     roster.forEach(p => {
       if (p.walkup) times[p.number] = p.walkup.startTime || 0;
     });
-    localStorage.setItem('walkup-start-times', JSON.stringify(times));
+    return times;
+  }
+
+  function saveStartTimes() {
+    localStorage.setItem('walkup-start-times', JSON.stringify(buildStartTimes()));
+    scheduleSync();
   }
 
   // === Waveform rendering ===
@@ -1204,6 +1434,7 @@
       globalDuration = parseInt(globalDurationSlider.value);
       globalDurationLabel.textContent = globalDuration + 's';
       localStorage.setItem('walkup-global-duration', globalDuration);
+      scheduleSync();
     });
 
     // Tap progress bar to seek
@@ -1420,7 +1651,7 @@
     if (player.walkup) {
       const startTime = player.walkup.startTime || 0;
       walkupAudio.src = player.walkup.file;
-      walkupAudio.volume = 0.15;
+      walkupAudio.volume = DUCK_VOLUME;
       walkupAudio.currentTime = startTime;
       walkupAudio.play().catch(() => {});
     }
@@ -1475,7 +1706,7 @@
   function startWalkup(player) {
     playbackPhase = 'walkup';
     updatePlayPauseIcon();
-    fadeIn(walkupAudio, 0.15, 1, 1000);
+    fadeIn(walkupAudio, DUCK_VOLUME, FULL_VOLUME, RAMP_UP_MS);
     scheduleWalkupFadeOut(player);
   }
 
@@ -1494,11 +1725,11 @@
       finishPlayback();
       return;
     }
-    const fadeStartMs = Math.max(0, (remaining - 2) * 1000);
+    const fadeStartMs = Math.max(0, (remaining - END_FADE_LEAD) * 1000);
     walkupFadeTimeout = setTimeout(() => {
       walkupFadeTimeout = null;
       if (playbackPhase === 'walkup' && currentPlayer === player && !isPaused) {
-        fadeOut(walkupAudio, 2000, () => finishPlayback());
+        fadeOut(walkupAudio, END_FADE_MS, () => finishPlayback());
       }
     }, fadeStartMs);
   }
@@ -1527,7 +1758,7 @@
 
       if (currentPlayer.walkup) {
         walkupAudio.currentTime = startTime + seconds;
-        walkupAudio.volume = 0.15;
+        walkupAudio.volume = DUCK_VOLUME;
         if (!isPaused) walkupAudio.play().catch(() => {});
       }
     } else {
@@ -1537,7 +1768,7 @@
 
       if (currentPlayer.walkup) {
         walkupAudio.currentTime = startTime + seconds;
-        walkupAudio.volume = 1;
+        walkupAudio.volume = FULL_VOLUME;
         if (!isPaused) walkupAudio.play().catch(() => {});
         scheduleWalkupFadeOut(currentPlayer);
       } else {

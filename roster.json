@@ -15,9 +15,9 @@
   },
   {
     "number": 3,
-    "firstName": "Charlie",
-    "lastName": "Pilkey",
-    "announcement": "audio/announcements/CharliePilkey.mp3",
+    "firstName": "Jett",
+    "lastName": "Rain",
+    "announcement": "audio/announcements/JettRain.mp3",
     "walkup": null
   },
   {
@@ -29,16 +29,16 @@
   },
   {
     "number": 5,
-    "firstName": "Jett",
-    "lastName": "Rain",
-    "announcement": "audio/announcements/JettRain.mp3",
+    "firstName": "Nolan",
+    "lastName": "Pitton",
+    "announcement": "audio/announcements/NolanPitton.mp3",
     "walkup": null
   },
   {
     "number": 6,
-    "firstName": "Mark",
-    "lastName": "O'Shea",
-    "announcement": "audio/announcements/MarkOShea.mp3",
+    "firstName": "Charlie",
+    "lastName": "Pilkey",
+    "announcement": "audio/announcements/CharliePilkey.mp3",
     "walkup": null
   },
   {
@@ -50,9 +50,9 @@
   },
   {
     "number": 8,
-    "firstName": "Nolan",
-    "lastName": "Pitton",
-    "announcement": "audio/announcements/NolanPitton.mp3",
+    "firstName": "Mark",
+    "lastName": "O'Shea",
+    "announcement": "audio/announcements/MarkOShea.mp3",
     "walkup": null
   }
 ]
