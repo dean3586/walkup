@@ -35,6 +35,10 @@
   const REGEN_ENDPOINT = /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
     ? 'http://127.0.0.1:8788/api/regenerate'
     : 'https://walkup-regen.vercel.app/api/regenerate';
+  // Gate for the re-record buttons. Embedded on purpose: it stops someone at the
+  // game from spending credits by accident, and the endpoint checks it too, so
+  // this copy is a UI gate rather than the thing protecting the key.
+  const REGEN_PASSCODE = '2026';
   // Flip to true once the team has real jersey numbers, so re-records say
   // "Now batting for Bloordale: number 5, ..." instead of just the name.
   const ANNOUNCE_WITH_NUMBERS = false;
@@ -1158,12 +1162,15 @@
       });
     });
 
+    applyRegenLock();
+
     // Re-record buttons
     songSettingsList.querySelectorAll('.regen-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const num = parseInt(btn.dataset.number);
         const player = roster.find(p => p.number === num);
         const statusEl = songSettingsList.querySelector(`.regen-status[data-number="${num}"]`);
+        if (!regenUnlocked()) return;
         if (player && statusEl) regenerateAnnouncement(player, btn, statusEl);
       });
     });
@@ -1323,6 +1330,14 @@
     return localStorage.getItem('walkup-regen-passcode') || '';
   }
 
+  function regenUnlocked() {
+    return regenPasscode() === REGEN_PASSCODE;
+  }
+
+  function applyRegenLock() {
+    document.body.classList.toggle('regen-unlocked', regenUnlocked());
+  }
+
   async function regenerateAnnouncement(player, btn, statusEl) {
     const passcode = regenPasscode();
     if (!passcode) {
@@ -1367,7 +1382,9 @@
       announcementAudio.currentTime = 0;
       announcementAudio.play().catch(() => {});
     } catch (err) {
-      statusEl.textContent = err.message;
+      statusEl.textContent = (err instanceof TypeError)
+        ? 'Could not reach the re-record service.'
+        : err.message;
     } finally {
       btn.disabled = false;
       btn.textContent = label;
@@ -1639,8 +1656,10 @@
     const passcodeInput = document.getElementById('regen-passcode');
     if (passcodeInput) {
       passcodeInput.value = regenPasscode();
+      applyRegenLock();
       passcodeInput.addEventListener('input', () => {
         localStorage.setItem('walkup-regen-passcode', passcodeInput.value.trim());
+        applyRegenLock();
       });
     }
 

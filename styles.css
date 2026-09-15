@@ -1670,6 +1670,7 @@ main {
 }
 
 .regen-btn {
+  display: none; /* revealed by the passcode; see .regen-unlocked below */
   flex-shrink: 0;
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -1692,6 +1693,10 @@ main {
 .regen-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.regen-unlocked .regen-btn {
+  display: inline-block;
 }
 
 .regen-status:not(:empty) {
