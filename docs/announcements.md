@@ -8,7 +8,7 @@ re-run sounds like the existing files.
 
 | Setting | UI value | API value |
 |---|---|---|
-| Voice | Baseball Announcer Two (custom, in Dean's account) | resolved by name |
+| Voice | Baseball Announcer Two (custom) | `SzhLxXqLBlrRykTRhsSA` |
 | Model | Multilingual v2 | `eleven_multilingual_v2` |
 | Speed | 1 | `speed: 1.0` |
 | Stability | 35% | `stability: 0.35` |
@@ -43,23 +43,32 @@ installed and no key is stored. Registered at user scope as:
     claude mcp add --transport http -s user elevenlabs https://api.us.elevenlabs.io/v1/mcp
 
 `https://api.elevenlabs.io/v1/mcp` redirects to the regional host and fails OAuth
-resource validation, so use the regional URL directly. Authenticate once with
-`/mcp` in Claude Code, then per player:
+resource validation, so use the regional URL directly. Authenticate with `/mcp`,
+then restart Claude Code — a server added mid-session does not load its tools
+until the next start.
 
-    text_to_speech(
-      text = "Now batting, Nolan Pitton",
-      voice_name = "Baseball Announcer Two",
-      model_id = "eleven_multilingual_v2",
-      stability = 0.35,
-      similarity_boost = 0.95,
-      style = 0.4,
-      speed = 1.0,
-      use_speaker_boost = true,
-      output_format = "mp3_44100_128",
-      output_directory = "<repo>/audio/announcements"
-    )
+This is the ElevenCreative flow API, not the plain text-to-speech tool:
 
-The tool names its own output file, so rename the result to `{First}{Last}.mp3`.
+1. `creative_list_voices(search="Baseball Announcer")` →
+   `Baseball Announcer Two` is `SzhLxXqLBlrRykTRhsSA`.
+2. `creative_generate_speech(prompt="Now batting, Nolan Pitton",
+   model_id="eleven_multilingual_v2", voice_id="SzhLxXqLBlrRykTRhsSA",
+   generations_count=1, flow_id=<one flow for the batch>)`. Pass
+   `estimate_only=true` first to price it — about 25 credits ($0.0025) per name.
+   `generations_count` defaults to 4, so set it to 1 or pay four times over.
+3. Poll `creative_get_flow_run_status` with the flow_id and every session_id
+   until `all_completed`.
+4. Each `media` entry carries its `prompt` and a signed `url` valid for two
+   hours. Download with curl to `audio/announcements/{First}{Last}.mp3`.
+
+**Limitation:** the TTS node exposes only `voice_id` and `language_code`. There is
+no stability, similarity, style, or speed parameter on any TTS model here
+(checked v2, v3, v4), so this path cannot apply the settings in the table above —
+it generates with the voice's defaults. Use Path B when the exact dial positions
+matter.
+
+Files generated this way on 2026-09-15:
+<https://elevenlabs.io/app/flows/b7dqzPdYuavXyhh3B9lV>
 
 ## Path B — script against the REST API
 
