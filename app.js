@@ -620,13 +620,15 @@
       globalDuration: globalDuration,
       startTimes: buildStartTimes(),
       deezer: buildDeezerInfo(),
+      pronunciations: buildPronunciations(),
     };
   }
 
   function configHasContent(cfg) {
     return (cfg.lineup && cfg.lineup.length) ||
       (cfg.deezer && Object.keys(cfg.deezer).length) ||
-      (cfg.startTimes && Object.keys(cfg.startTimes).length);
+      (cfg.startTimes && Object.keys(cfg.startTimes).length) ||
+      (cfg.pronunciations && Object.keys(cfg.pronunciations).length);
   }
 
   // Apply a config blob pulled from the cloud into local state + cache.
@@ -682,6 +684,13 @@
         }
       });
       localStorage.setItem('walkup-start-times', JSON.stringify(startTimes));
+
+      // Pronunciations — a remote blob without the key leaves them alone, so an
+      // older client's push can't wipe them.
+      if (data.pronunciations) {
+        roster.forEach(p => { p.pronunciation = data.pronunciations[p.number] || null; });
+        localStorage.setItem('walkup-pronunciations', JSON.stringify(data.pronunciations));
+      }
 
       renderRoster();
       renderLineup();
@@ -746,6 +755,7 @@
     hydrateBakedSongs();
     await loadUploadedAudio();
     loadDeezerInfo();
+    loadPronunciations();
 
     const saved = localStorage.getItem('walkup-lineup');
     if (saved) {
@@ -1081,6 +1091,13 @@
           </div>
         </div>
         ${songInfo}
+        <label class="pronounce-field">
+          <span class="pronounce-label">Pronounced like</span>
+          <input class="pronounce-input" type="text" data-number="${player.number}"
+                 value="${escapeHtml(player.pronunciation || '')}"
+                 placeholder="${escapeHtml(player.firstName + ' ' + player.lastName)}"
+                 spellcheck="false" autocapitalize="off">
+        </label>
         <div class="waveform-container" data-number="${player.number}">
           ${hasWalkup
             ? `<canvas class="waveform-canvas" data-number="${player.number}"></canvas>
@@ -1103,6 +1120,18 @@
       attachDropHandlers(waveformContainer, player);
 
       songSettingsList.appendChild(row);
+    });
+
+    // Pronunciation fields — save as they type (scheduleSync debounces the push)
+    songSettingsList.querySelectorAll('.pronounce-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const num = parseInt(input.dataset.number);
+        const player = roster.find(p => p.number === num);
+        if (!player) return;
+        const value = input.value.trim();
+        player.pronunciation = value || null;
+        savePronunciations();
+      });
     });
 
     // Wire up +/- buttons
@@ -1224,6 +1253,35 @@
   function saveStartTimes() {
     localStorage.setItem('walkup-start-times', JSON.stringify(buildStartTimes()));
     scheduleSync();
+  }
+
+  // === Pronunciations ===
+  // A respelling of a player's name — "Charlie mon-DOO" — used when the
+  // announcement audio is regenerated, not during playback. Edited here so
+  // whoever hears the mistake at the field can record the fix, and synced so it
+  // survives the device.
+  function buildPronunciations() {
+    const out = {};
+    roster.forEach(p => {
+      if (p.pronunciation) out[p.number] = p.pronunciation;
+    });
+    return out;
+  }
+
+  function savePronunciations() {
+    localStorage.setItem('walkup-pronunciations', JSON.stringify(buildPronunciations()));
+    scheduleSync();
+  }
+
+  function loadPronunciations() {
+    const saved = localStorage.getItem('walkup-pronunciations');
+    if (!saved) return;
+    try {
+      const map = JSON.parse(saved);
+      roster.forEach(p => {
+        if (map[p.number] !== undefined) p.pronunciation = map[p.number] || null;
+      });
+    } catch (e) {}
   }
 
   // === Waveform rendering ===

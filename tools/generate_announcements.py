@@ -15,6 +15,9 @@ Examples:
   python tools/generate_announcements.py --names "Nolan Pitton" "Charlie Mondoux"
   python tools/generate_announcements.py --numbers --names "5:Nolan Pitton"
 
+  # pick up pronunciations typed into the app's Settings tab
+  python tools/generate_announcements.py --from-cloud --force
+
   # audition a pronunciation respelling without touching the committed files
   python tools/generate_announcements.py --force --out-dir %TEMP%       --names "Charlie Mondoux=Charlie mon-DOO"
 
@@ -32,6 +35,11 @@ import urllib.parse
 import urllib.request
 
 API = "https://api.elevenlabs.io"
+# The app syncs its settings, pronunciations included, to this Supabase row.
+# Same URL and publishable key the app ships in app.js.
+SYNC_URL = ("https://uijbrrvchglumgvleeoo.supabase.co/rest/v1/walkup_config"
+            "?id=eq.default&select=data")
+SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
 VOICE_NAME = "Baseball Announcer Two"
 MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
 OUTPUT_FORMAT = "mp3_44100_128"
@@ -114,6 +122,20 @@ def phrase(first, last, number, with_numbers, spoken=None):
     return "Now batting, %s" % name
 
 
+def cloud_pronunciations():
+    """Reads the pronunciations people typed into the app's Settings tab."""
+    req = urllib.request.Request(SYNC_URL)
+    req.add_header("apikey", SYNC_KEY)
+    req.add_header("Authorization", "Bearer " + SYNC_KEY)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            rows = json.loads(resp.read())
+    except (urllib.error.URLError, ValueError) as e:
+        sys.exit("Could not read the synced config: %s" % e)
+    data = (rows[0].get("data") or {}) if rows else {}
+    return {str(k): v for k, v in (data.get("pronunciations") or {}).items()}
+
+
 def players_from_roster():
     with open(os.path.join(ROOT, "roster.json"), encoding="utf-8") as fh:
         roster = json.load(fh)
@@ -164,9 +186,19 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the lines, call nothing")
     ap.add_argument("--out-dir", default=OUT_DIR,
                     help="where to write the MP3s (default: audio/announcements)")
+    ap.add_argument("--from-cloud", action="store_true",
+                    help="take pronunciations from the app's synced settings, "
+                         "overriding roster.json")
     args = ap.parse_args()
 
     players = players_from_names(args.names) if args.names else players_from_roster()
+
+    if args.from_cloud:
+        cloud = cloud_pronunciations()
+        players = [(f, l, n, cloud.get(str(n), sp)) for f, l, n, sp in players]
+        for f, l, n, sp in players:
+            if cloud.get(str(n)):
+                print("cloud  #%s %s %s -> %r" % (n, f, l, sp))
     lines = [(slug(f, l), phrase(f, l, n, args.numbers, sp)) for f, l, n, sp in players]
 
     if args.dry_run:

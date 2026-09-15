@@ -1615,6 +1615,40 @@ main {
   font-size: 0.85rem;
 }
 
+.pronounce-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.pronounce-label {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pronounce-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.pronounce-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.pronounce-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .search-note {
   padding: 8px 8px 4px;
   color: var(--text-tertiary);
