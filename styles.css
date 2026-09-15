@@ -169,7 +169,7 @@ main {
 }
 
 .player-card.playing {
-  border-color: rgba(244, 160, 32, 0.35);
+  border-color: rgba(253, 191, 78, 0.35);
   background: var(--accent-soft);
   box-shadow: 0 0 30px var(--accent-glow);
 }
@@ -344,7 +344,7 @@ main {
 }
 
 .lineup-item.playing {
-  border-color: rgba(244, 160, 32, 0.35);
+  border-color: rgba(253, 191, 78, 0.35);
   background: var(--accent-soft);
   box-shadow: 0 0 25px var(--accent-glow);
 }
@@ -381,7 +381,7 @@ main {
 }
 
 .lineup-role-at-bat {
-  background: rgba(244, 160, 32, 0.2);
+  background: rgba(253, 191, 78, 0.2);
   color: var(--accent);
 }
 
@@ -432,7 +432,7 @@ main {
 }
 
 .lineup-placeholder {
-  border: 2px dashed rgba(244, 160, 32, 0.25);
+  border: 2px dashed rgba(253, 191, 78, 0.25);
   border-radius: var(--radius-sm);
   margin-bottom: 5px;
   background: var(--accent-soft);
@@ -520,7 +520,7 @@ main {
 
 .action-btn:hover:not(:disabled) {
   background: #ffb340;
-  box-shadow: 0 4px 20px rgba(244, 160, 32, 0.3);
+  box-shadow: 0 4px 20px rgba(253, 191, 78, 0.3);
   transform: translateY(-1px);
 }
 
@@ -599,7 +599,7 @@ main {
    ============================== */
 #playback-bar {
   flex-shrink: 0;
-  background: rgba(8, 10, 18, 0.95);
+  background: rgba(3, 26, 18, 0.95);
   border-top: 1px solid var(--border);
 }
 
@@ -810,7 +810,7 @@ main {
    ============================== */
 @keyframes subtle-glow {
   0%, 100% { box-shadow: 0 0 20px var(--accent-glow); }
-  50% { box-shadow: 0 0 35px rgba(244, 160, 32, 0.2), var(--shadow); }
+  50% { box-shadow: 0 0 35px rgba(253, 191, 78, 0.2), var(--shadow); }
 }
 
 .player-card.playing { animation: subtle-glow 3s ease-in-out infinite; }
@@ -1075,7 +1075,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(244, 160, 32, 0.15);
+  background: rgba(253, 191, 78, 0.15);
   color: var(--accent);
   font-size: 0.85rem;
   font-weight: 600;
@@ -1102,7 +1102,7 @@ main {
 
 .waveform-container.drag-over {
   border-color: var(--accent);
-  background: rgba(244, 160, 32, 0.1);
+  background: rgba(253, 191, 78, 0.1);
 }
 
 .waveform-container.drag-over .waveform-overlay {
@@ -1112,7 +1112,7 @@ main {
 .waveform-container.drag-over .waveform-empty {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(244, 160, 32, 0.1);
+  background: rgba(253, 191, 78, 0.1);
 }
 
 /* ==============================
@@ -1211,7 +1211,7 @@ main {
   line-height: 0.9;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 60px rgba(244, 160, 32, 0.3);
+  text-shadow: 0 0 60px rgba(253, 191, 78, 0.3);
 }
 
 #np-name {
@@ -1315,7 +1315,7 @@ main {
   height: 84px;
   background: var(--accent);
   color: var(--bg);
-  box-shadow: 0 8px 30px rgba(244, 160, 32, 0.35);
+  box-shadow: 0 8px 30px rgba(253, 191, 78, 0.35);
 }
 
 .np-transport-btn.primary:hover:not(:disabled) {
@@ -1893,7 +1893,7 @@ main {
 /* Player card drag-over (for roster) */
 .player-card.drag-over {
   border-color: var(--accent);
-  background: rgba(244, 160, 32, 0.1);
+  background: rgba(253, 191, 78, 0.1);
   box-shadow: 0 0 20px var(--accent-glow);
 }
 

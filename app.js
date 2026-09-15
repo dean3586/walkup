@@ -1045,10 +1045,10 @@
     const allChildren = Array.from(lineupList.children);
     let newIdx = allChildren.indexOf(placeholder);
 
-    dragItem.classList.remove('dragging');
-    dragItem.style.width = '';
-    dragItem.style.top = '';
-    dragItem.style.left = '';
+    // The tile was moved to <body> so it could float over the list while
+    // dragging. renderLineup() rebuilds the list from scratch, so drop it here
+    // rather than letting it settle at the end of the page under the player.
+    dragItem.remove();
 
     if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
 
