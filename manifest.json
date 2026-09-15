@@ -1,12 +1,12 @@
 {
-  "name": "Walk-Up Music",
-  "short_name": "Walk-Up",
+  "name": "Bloordale Walk-Up",
+  "short_name": "Bloordale",
   "description": "Baseball walk-up music and announcements",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#010205",
-  "theme_color": "#010205",
+  "background_color": "#02160F",
+  "theme_color": "#02160F",
   "icons": [
     {
       "src": "icon-192.png",

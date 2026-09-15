@@ -1,5 +1,5 @@
 // Walk-Up Music Service Worker
-const CACHE_VERSION = 'walkup-v10';
+const CACHE_VERSION = 'walkup-v11';
 const STATIC_ASSETS = [
   './',
   'index.html',
@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   'styles.css',
   'roster.json',
   'manifest.json',
-  'icon.svg',
+  'logo.png',
   'icon-180.png',
   'icon-192.png',
   'icon-512.png',

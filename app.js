@@ -1909,7 +1909,7 @@
       navigator.mediaSession.metadata = new MediaMetadata({
         title: `#${player.number} ${player.firstName} ${player.lastName}`,
         artist: 'Now Batting',
-        album: 'Walk-Up Music',
+        album: 'Bloordale Walk-Up',
         artwork: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
