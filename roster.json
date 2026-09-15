@@ -1,58 +1,30 @@
 [
   {
     "number": 1,
-    "firstName": "Carter",
-    "lastName": "Belvedere",
-    "announcement": "audio/announcements/CarterBelvedere.mp3",
-    "walkup": null
-  },
-  {
-    "number": 2,
-    "firstName": "Casey",
-    "lastName": "Dhotar",
-    "announcement": "audio/announcements/CaseyDhotar.mp3",
-    "walkup": null
-  },
-  {
-    "number": 3,
-    "firstName": "Jett",
-    "lastName": "Rain",
-    "announcement": "audio/announcements/JettRain.mp3",
-    "walkup": null
-  },
-  {
-    "number": 4,
-    "firstName": "James",
-    "lastName": "Tessaro",
-    "announcement": "audio/announcements/JamesTessaro.mp3",
-    "walkup": null
-  },
-  {
-    "number": 5,
     "firstName": "Nolan",
     "lastName": "Pitton",
     "announcement": "audio/announcements/NolanPitton.mp3",
     "walkup": null
   },
   {
-    "number": 6,
+    "number": 2,
     "firstName": "Charlie",
-    "lastName": "Pilkey",
-    "announcement": "audio/announcements/CharliePilkey.mp3",
+    "lastName": "Mondoux",
+    "announcement": "audio/announcements/CharlieMondoux.mp3",
     "walkup": null
   },
   {
-    "number": 7,
-    "firstName": "Mia",
-    "lastName": "Merlo",
-    "announcement": "audio/announcements/MiaMerlo.mp3",
+    "number": 3,
+    "firstName": "Joseph",
+    "lastName": "Fotia",
+    "announcement": "audio/announcements/JosephFotia.mp3",
     "walkup": null
   },
   {
-    "number": 8,
-    "firstName": "Mark",
-    "lastName": "O'Shea",
-    "announcement": "audio/announcements/MarkOShea.mp3",
+    "number": 4,
+    "firstName": "Matthew",
+    "lastName": "Birka",
+    "announcement": "audio/announcements/MatthewBirka.mp3",
     "walkup": null
   }
 ]

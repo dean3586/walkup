@@ -1615,6 +1615,13 @@ main {
   font-size: 0.85rem;
 }
 
+.search-note {
+  padding: 8px 8px 4px;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
 .search-result {
   display: flex;
   align-items: center;

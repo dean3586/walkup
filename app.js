@@ -179,15 +179,39 @@
 
   // === Deezer Search ===
   let searchDebounceTimer = null;
+  let lastExplicitBlocked = 0; // how many explicit results the last search hid
+
+  // Deezer flags explicit content two ways: the explicit_lyrics boolean and the
+  // explicit_content_lyrics / explicit_content_cover codes (1 = explicit,
+  // 4 = partially explicit). Anything flagged either way is blocked.
+  const EXPLICIT_CODES = [1, 4];
+
+  function isExplicitTrack(track) {
+    if (!track) return false;
+    if (track.explicit_lyrics === true) return true;
+    if (EXPLICIT_CODES.indexOf(track.explicit_content_lyrics) !== -1) return true;
+    if (EXPLICIT_CODES.indexOf(track.explicit_content_cover) !== -1) return true;
+    return false;
+  }
+
+  // Removes explicit tracks from a result list and records how many were hidden
+  // so the search UI can say so.
+  function dropExplicit(tracks, limit = 12) {
+    const all = tracks || [];
+    const clean = all.filter(t => !isExplicitTrack(t));
+    lastExplicitBlocked = all.length - clean.length;
+    return clean.slice(0, limit);
+  }
 
   async function searchDeezer(query) {
     if (!query || query.length < 2) return [];
     try {
-      const resp = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=12&output=jsonp`);
+      // Over-fetch: explicit tracks get filtered out below.
+      const resp = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=25&output=jsonp`);
       // Deezer doesn't support CORS for search, use JSONP-style workaround
       // Actually, let's try with a CORS proxy approach or direct fetch
       const data = await resp.json();
-      return data.data || [];
+      return dropExplicit(data.data);
     } catch (e) {
       // Fallback: use JSONP
       return searchDeezerJsonp(query);
@@ -198,9 +222,9 @@
     return new Promise((resolve) => {
       const cbName = '_deezerCb' + Date.now();
       const script = document.createElement('script');
-      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=12&output=jsonp&callback=${cbName}`;
+      script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=25&output=jsonp&callback=${cbName}`;
       window[cbName] = (data) => {
-        resolve(data.data || []);
+        resolve(dropExplicit(data.data));
         delete window[cbName];
         script.remove();
       };
@@ -247,11 +271,21 @@
   function renderSearchResults(tracks) {
     const results = document.getElementById('search-results');
     if (tracks.length === 0) {
-      results.innerHTML = '<div class="search-empty">No results found</div>';
+      results.innerHTML = lastExplicitBlocked > 0
+        ? '<div class="search-empty">No clean results — every match is labelled explicit</div>'
+        : '<div class="search-empty">No results found</div>';
       return;
     }
 
     results.innerHTML = '';
+    if (lastExplicitBlocked > 0) {
+      const note = document.createElement('div');
+      note.className = 'search-note';
+      note.textContent = lastExplicitBlocked === 1
+        ? '1 explicit result hidden'
+        : `${lastExplicitBlocked} explicit results hidden`;
+      results.appendChild(note);
+    }
     tracks.forEach(track => {
       const item = document.createElement('div');
       item.className = 'search-result';
@@ -325,6 +359,7 @@
   async function assignDeezerTrack(playerNumber, track) {
     const player = roster.find(p => p.number === playerNumber);
     if (!player) return;
+    if (isExplicitTrack(track)) throw new Error('That song is labelled explicit');
     if (!track.preview) throw new Error('No preview available for this track');
 
     // Stream directly from the Deezer preview URL — no MP3 download/storage.
@@ -396,9 +431,11 @@
     } catch (e) {}
   }
 
-  // Deezer preview URLs expire, so re-resolve a fresh one from the stored
-  // track id. Runs in the background on load; falls back to the cached URL.
-  function resolveDeezerPreview(trackId) {
+  // Deezer preview URLs expire, so re-resolve the track from the stored id.
+  // Resolves the full track object (the refresh re-checks the explicit flags,
+  // which may have been added after the song was picked).
+  // Runs in the background on load; falls back to the cached URL.
+  function resolveDeezerTrack(trackId) {
     return new Promise((resolve) => {
       const cbName = '_dzTrack' + trackId + '_' + Math.floor(performance.now());
       const script = document.createElement('script');
@@ -407,7 +444,7 @@
       window[cbName] = (data) => {
         if (settled) return;
         settled = true;
-        resolve(data && data.preview ? data.preview : null);
+        resolve(data && data.preview ? data : null);
         cleanup();
       };
       script.onerror = () => { if (!settled) { settled = true; resolve(null); cleanup(); } };
@@ -420,11 +457,15 @@
     const tasks = roster
       .filter(p => p._isDeezer && p._deezerTrack && p._deezerTrack.id)
       .map(async (p) => {
-        const fresh = await resolveDeezerPreview(p._deezerTrack.id);
-        if (fresh) {
-          if (!p.walkup) p.walkup = { startTime: 0 };
-          p.walkup.file = fresh;
+        const fresh = await resolveDeezerTrack(p._deezerTrack.id);
+        if (!fresh) return;
+        if (isExplicitTrack(fresh)) {
+          // Song is flagged explicit now, so it stops being playable here.
+          await deleteUploadedAudio(p);
+          return;
         }
+        if (!p.walkup) p.walkup = { startTime: 0 };
+        p.walkup.file = fresh.preview;
       });
     if (tasks.length === 0) return;
     await Promise.all(tasks);
