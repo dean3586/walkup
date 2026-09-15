@@ -961,7 +961,7 @@
         });
 
         const handle = item.querySelector('.drag-handle');
-        handle.addEventListener('touchstart', (e) => onDragStart(e, item, idx), { passive: false });
+        handle.addEventListener('pointerdown', (e) => onDragStart(e, item, idx));
 
         lineupList.appendChild(item);
       });
@@ -984,15 +984,17 @@
     updateTransportState();
   }
 
-  // === Touch drag-to-reorder ===
+  // === Drag-to-reorder ===
+  // Pointer events rather than touch events: the same handler then covers a
+  // finger on a phone and a mouse on a laptop.
   function onDragStart(e, item, idx) {
+    if (e.button > 0) return; // ignore right/middle click
     e.preventDefault();
-    const touch = e.touches[0];
     dragItem = item;
     dragIdx = idx;
 
     const rect = item.getBoundingClientRect();
-    dragOffsetY = touch.clientY - rect.top;
+    dragOffsetY = e.clientY - rect.top;
 
     placeholder = document.createElement('div');
     placeholder.className = 'lineup-placeholder';
@@ -1005,23 +1007,22 @@
     item.style.left = rect.left + 'px';
     document.body.appendChild(item);
 
-    document.addEventListener('touchmove', onDragMove, { passive: false });
-    document.addEventListener('touchend', onDragEnd);
-    document.addEventListener('touchcancel', onDragEnd);
+    document.addEventListener('pointermove', onDragMove);
+    document.addEventListener('pointerup', onDragEnd);
+    document.addEventListener('pointercancel', onDragEnd);
   }
 
   function onDragMove(e) {
     if (!dragItem) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    dragItem.style.top = (touch.clientY - dragOffsetY) + 'px';
+    dragItem.style.top = (e.clientY - dragOffsetY) + 'px';
 
     const items = lineupList.querySelectorAll('.lineup-item:not(.dragging)');
     let insertBefore = null;
 
     for (const child of items) {
       const rect = child.getBoundingClientRect();
-      if (touch.clientY < rect.top + rect.height / 2) {
+      if (e.clientY < rect.top + rect.height / 2) {
         insertBefore = child;
         break;
       }
@@ -1036,9 +1037,9 @@
 
   function onDragEnd() {
     if (!dragItem) return;
-    document.removeEventListener('touchmove', onDragMove);
-    document.removeEventListener('touchend', onDragEnd);
-    document.removeEventListener('touchcancel', onDragEnd);
+    document.removeEventListener('pointermove', onDragMove);
+    document.removeEventListener('pointerup', onDragEnd);
+    document.removeEventListener('pointercancel', onDragEnd);
 
     const allChildren = Array.from(lineupList.children);
     let newIdx = allChildren.indexOf(placeholder);

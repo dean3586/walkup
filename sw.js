@@ -1,5 +1,5 @@
 // Walk-Up Music Service Worker
-const CACHE_VERSION = 'walkup-v11';
+const CACHE_VERSION = 'walkup-v12';
 const STATIC_ASSETS = [
   './',
   'index.html',
