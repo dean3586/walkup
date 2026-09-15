@@ -71,14 +71,24 @@ paths in each player's `announcement` field.
 ## Re-recording from the app
 
 Settings has a "Re-record" button beside each pronunciation field, so a name can
-be fixed at the field instead of from a laptop. It posts to the endpoint in
-`tools/regen-api/` (README there), which holds the ElevenLabs key and checks a
-passcode typed once per browser. The new take plays immediately and is kept on
-that device; once the endpoint has a `GITHUB_TOKEN` it also commits the MP3, and
-every phone picks it up on the next Pages deploy.
+be fixed at the field instead of from a laptop. The buttons stay hidden until the
+passcode in `REGEN_PASSCODE` (`app.js`) is entered, which is what stops someone
+spending credits by tapping something they don't recognise.
 
-Re-records use the same voice and settings as the script below. Announcements
-phrase with numbers when `ANNOUNCE_WITH_NUMBERS` in `app.js` is flipped to true.
+It calls ElevenLabs directly from the browser — no server, no proxy. The key in
+`ELEVEN_API_KEY` is public by design and restricted in the ElevenLabs dashboard
+to a small credit quota, so a stray copy can spend a few announcements' worth of
+credit and nothing more. Rotate it there if needed, and paste the new one into
+`app.js`.
+
+`ELEVEN_VOICE_SETTINGS` in `app.js` duplicates the settings in
+`tools/generate_announcements.py`. Change one and change the other, or
+re-recordings will not match the committed files.
+
+A re-record plays immediately and is stored in that browser (IndexedDB), so it
+overrides the committed file on that device only. To give everyone the new take,
+regenerate with the script and commit the MP3. Announcements phrase with numbers
+when `ANNOUNCE_WITH_NUMBERS` in `app.js` is flipped to true.
 
 ## Path A — hosted MCP server (no API key)
 

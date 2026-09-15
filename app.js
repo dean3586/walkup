@@ -30,11 +30,23 @@
   // One shared row in Supabase keeps selections + settings in sync across
   // devices. The publishable key is public by design; RLS limits anon access
   // to this single table only.
-  // Re-recording an announcement needs the ElevenLabs key, which cannot live in
-  // a public static app, so a small passcode-gated endpoint holds it.
-  const REGEN_ENDPOINT = /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
-    ? 'http://127.0.0.1:8788/api/regenerate'
-    : 'https://walkup-regen.vercel.app/api/regenerate';
+  // Re-recording calls ElevenLabs straight from the browser — no server. This key
+  // is deliberately public and deliberately restricted: it is capped at a small
+  // credit quota, so the worst a stray copy can do is spend a few
+  // announcements' worth of credit and stop.
+  const ELEVEN_API_KEY = 'PASTE_RESTRICTED_KEY_HERE';
+  const ELEVEN_VOICE_ID = 'SzhLxXqLBlrRykTRhsSA'; // Baseball Announcer Two
+  const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
+  // Matches tools/generate_announcements.py — change both together or
+  // re-recordings will not match the committed files.
+  const ELEVEN_VOICE_SETTINGS = {
+    stability: 0.35,
+    similarity_boost: 0.95,
+    style: 0.4,
+    speed: 1.0,
+    use_speaker_boost: true,
+  };
+  const TEAM_NAME = 'Bloordale';
   // Gate for the re-record buttons. Embedded on purpose: it stops someone at the
   // game from spending credits by accident, and the endpoint checks it too, so
   // this copy is a UI gate rather than the thing protecting the key.
@@ -1339,9 +1351,12 @@
   }
 
   async function regenerateAnnouncement(player, btn, statusEl) {
-    const passcode = regenPasscode();
-    if (!passcode) {
+    if (!regenUnlocked()) {
       statusEl.textContent = 'Enter the passcode at the top of Settings first.';
+      return;
+    }
+    if (ELEVEN_API_KEY.startsWith('PASTE_')) {
+      statusEl.textContent = 'No recording key is set up yet.';
       return;
     }
 
@@ -1350,32 +1365,41 @@
     btn.textContent = '...';
     statusEl.textContent = 'Recording...';
 
-    try {
-      const res = await fetch(REGEN_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          passcode,
-          number: player.number,
-          firstName: player.firstName,
-          lastName: player.lastName,
-          pronunciation: player.pronunciation || '',
-          withNumbers: ANNOUNCE_WITH_NUMBERS,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const spoken = (player.pronunciation || `${player.firstName} ${player.lastName}`).trim();
+    const text = ANNOUNCE_WITH_NUMBERS
+      ? `Now batting for ${TEAM_NAME}: number ${player.number}, ${spoken}!`
+      : `Now batting, ${spoken}`;
 
-      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+    try {
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
+        {
+          method: 'POST',
+          headers: { 'xi-api-key': ELEVEN_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            model_id: ELEVEN_MODEL_ID,
+            voice_settings: ELEVEN_VOICE_SETTINGS,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        if (res.status === 401) throw new Error('The recording key was rejected — it may need replacing.');
+        if (res.status === 429 || /quota|credit/i.test(detail)) {
+          throw new Error('Out of recording credits for now.');
+        }
+        throw new Error(`Recording failed (${res.status})`);
+      }
+
+      const blob = await res.blob();
       await saveAudioFile(annKey(player.number), blob);
       if (player._annUrl) URL.revokeObjectURL(player._annUrl);
       player._annUrl = URL.createObjectURL(blob);
       player.announcement = player._annUrl;
 
-      statusEl.textContent = data.committed
-        ? `Saved for everyone: "${data.text}"`
-        : `Saved on this device: "${data.text}"`;
+      statusEl.textContent = `Saved on this device: "${text}"`;
 
       // Play it back so the pronunciation can be judged immediately.
       announcementAudio.src = player.announcement;
@@ -1383,7 +1407,7 @@
       announcementAudio.play().catch(() => {});
     } catch (err) {
       statusEl.textContent = (err instanceof TypeError)
-        ? 'Could not reach the re-record service.'
+        ? 'Could not reach ElevenLabs — check the connection.'
         : err.message;
     } finally {
       btn.disabled = false;
