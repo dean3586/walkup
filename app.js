@@ -34,7 +34,7 @@
   // is deliberately public and deliberately restricted: it is capped at a small
   // credit quota, so the worst a stray copy can do is spend a few
   // announcements' worth of credit and stop.
-  const ELEVEN_API_KEY = 'PASTE_RESTRICTED_KEY_HERE';
+  const ELEVEN_API_KEY = 'sk_649990941ca77dfec28a3c95e2a20d962dedd45e6c64b0cc';
   const ELEVEN_VOICE_ID = 'SzhLxXqLBlrRykTRhsSA'; // Baseball Announcer Two
   const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
   // Matches tools/generate_announcements.py — change both together or
@@ -833,8 +833,9 @@
     refreshDeezerUrls().catch(() => {});
 
     // Pull the shared cloud config (applies + re-renders if present, or seeds
-    // the cloud from this device's existing selections if empty).
-    remotePull();
+    // the cloud from this device's existing selections if empty), then fall back
+    // to batting everyone if no lineup came from either place.
+    remotePull().then(seedLineupIfEmpty).catch(() => seedLineupIfEmpty());
   }
 
   // === Tab switching ===
@@ -1071,24 +1072,41 @@
     renderLineup();
   }
 
+  // Everyone bats by default, so this strip only holds the players who have been
+  // taken out of the order — empty most of the time, and hidden when it is.
   function renderAvailable() {
     const inLineup = new Set(lineup);
+    const benched = roster.filter(p => !inLineup.has(p.number));
+    const section = document.getElementById('available-players');
+
     availableList.innerHTML = '';
-    roster.forEach(player => {
+    section.hidden = benched.length === 0;
+
+    benched.forEach(player => {
       const el = document.createElement('div');
-      el.className = 'available-player' + (inLineup.has(player.number) ? ' in-lineup' : '');
+      el.className = 'available-player';
       el.innerHTML = `
-        <div class="num">#${player.number}</div>
-        <div class="name">${player.firstName} ${player.lastName}</div>
+        <span class="num">#${player.number}</span>
+        <span class="name">${player.firstName} ${player.lastName}</span>
       `;
+      el.title = 'Tap to put back in the order';
       el.addEventListener('click', () => {
-        if (inLineup.has(player.number)) return;
         lineup.push(player.number);
         saveLineup();
         renderLineup();
       });
       availableList.appendChild(el);
     });
+  }
+
+  // A device with nothing saved and nothing in the cloud starts with the whole
+  // roster batting, in jersey order.
+  function seedLineupIfEmpty() {
+    if (lineup.length) return false;
+    lineup = roster.map(p => p.number);
+    saveLineup();
+    renderLineup();
+    return true;
   }
 
   function saveLineup() {

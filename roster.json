@@ -30,5 +30,61 @@
     "pronunciation": null,
     "announcement": "audio/announcements/MatthewBirka.mp3",
     "walkup": null
+  },
+  {
+    "number": 5,
+    "firstName": "Easton",
+    "lastName": "McGillivray",
+    "pronunciation": null,
+    "announcement": "audio/announcements/EastonMcGillivray.mp3",
+    "walkup": null
+  },
+  {
+    "number": 6,
+    "firstName": "Elliot",
+    "lastName": "Santos",
+    "pronunciation": null,
+    "announcement": "audio/announcements/ElliotSantos.mp3",
+    "walkup": null
+  },
+  {
+    "number": 7,
+    "firstName": "Grant",
+    "lastName": "Winters",
+    "pronunciation": null,
+    "announcement": "audio/announcements/GrantWinters.mp3",
+    "walkup": null
+  },
+  {
+    "number": 8,
+    "firstName": "Leonidas",
+    "lastName": "Seventikidis",
+    "pronunciation": null,
+    "announcement": "audio/announcements/LeonidasSeventikidis.mp3",
+    "walkup": null
+  },
+  {
+    "number": 9,
+    "firstName": "Noah",
+    "lastName": "Larrain",
+    "pronunciation": null,
+    "announcement": "audio/announcements/NoahLarrain.mp3",
+    "walkup": null
+  },
+  {
+    "number": 10,
+    "firstName": "Ryan",
+    "lastName": "Foster",
+    "pronunciation": null,
+    "announcement": "audio/announcements/RyanFoster.mp3",
+    "walkup": null
+  },
+  {
+    "number": 11,
+    "firstName": "Sullivan",
+    "lastName": "Reid",
+    "pronunciation": null,
+    "announcement": "audio/announcements/SullivanReid.mp3",
+    "walkup": null
   }
 ]
