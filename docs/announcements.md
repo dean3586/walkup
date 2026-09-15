@@ -10,10 +10,10 @@ re-run sounds like the existing files.
 |---|---|---|
 | Voice | Baseball Announcer Two (custom) | `SzhLxXqLBlrRykTRhsSA` |
 | Model | Multilingual v2 | `eleven_multilingual_v2` |
-| Speed | 1 | `speed: 1.0` |
+| Speed | 0.9 | `speed: 0.9` |
 | Stability | 35% | `stability: 0.35` |
 | Similarity | 95% | `similarity_boost: 0.95` |
-| Style Exaggeration | 40% | `style: 0.40` |
+| Style Exaggeration | 45% | `style: 0.45` |
 | Speaker boost | on | `use_speaker_boost: true` |
 | Output | — | `mp3_44100_128` |
 
@@ -23,7 +23,7 @@ Style exaggeration and speed need a v2 model; `eleven_v3` ignores them.
 
 Without jersey numbers (current):
 
-    Now batting, {First} {Last}
+    Now batting: {First} {Last}!
 
 With jersey numbers (once they are assigned):
 
@@ -81,7 +81,7 @@ to a small credit quota, so a stray copy can spend a few announcements' worth of
 credit and nothing more. Rotate it there if needed, and paste the new one into
 `app.js`.
 
-`ELEVEN_VOICE_SETTINGS` in `app.js` duplicates the settings in
+`ELEVEN_VOICE_SETTINGS` and the phrase in `app.js` duplicate what is in
 `tools/generate_announcements.py`. Change one and change the other, or
 re-recordings will not match the committed files.
 

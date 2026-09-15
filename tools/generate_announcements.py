@@ -49,8 +49,8 @@ TEAM = "Bloordale"
 VOICE_SETTINGS = {
     "stability": 0.35,          # UI: Stability 35%
     "similarity_boost": 0.95,   # UI: Similarity 95%
-    "style": 0.40,              # UI: Style Exaggeration 40%
-    "speed": 1.0,               # UI: Speed 1
+    "style": 0.45,              # UI: Style Exaggeration 45%
+    "speed": 0.9,               # UI: Speed 0.9
     "use_speaker_boost": True,
 }
 
@@ -119,7 +119,26 @@ def phrase(first, last, number, with_numbers, spoken=None):
         if number is None:
             sys.exit("--numbers needs a jersey number for %s %s" % (first, last))
         return "Now batting for %s: number %s, %s!" % (TEAM, number, name)
-    return "Now batting, %s" % name
+    return "Now batting: %s!" % name
+
+
+def show_history(key, limit):
+    """Recent generations on the account: which voice actually spoke each line."""
+    url = "%s/v1/history?%s" % (API, urllib.parse.urlencode({"page_size": limit}))
+    items = json.loads(request(url, key)).get("history", [])
+    if not items:
+        print("No history returned.")
+        return
+    print("%-20s  %-24s  %s" % ("when", "voice", "text"))
+    import datetime
+    for it in items:
+        when = datetime.datetime.fromtimestamp(
+            it.get("date_unix", 0)).strftime("%Y-%m-%d %H:%M:%S")
+        print("%-20s  %-24s  %s" % (
+            when,
+            "%s" % it.get("voice_name", "?"),
+            (it.get("text") or "").strip()[:60],
+        ))
 
 
 def cloud_pronunciations():
@@ -186,10 +205,16 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the lines, call nothing")
     ap.add_argument("--out-dir", default=OUT_DIR,
                     help="where to write the MP3s (default: audio/announcements)")
+    ap.add_argument("--history", nargs="?", type=int, const=15, metavar="N",
+                    help="list the last N generations with the voice used, then exit")
     ap.add_argument("--from-cloud", action="store_true",
                     help="take pronunciations from the app's synced settings, "
                          "overriding roster.json")
     args = ap.parse_args()
+
+    if args.history:
+        show_history(load_key(args.key_file), args.history)
+        return
 
     players = players_from_names(args.names) if args.names else players_from_roster()
 

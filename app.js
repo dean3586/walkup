@@ -42,8 +42,8 @@
   const ELEVEN_VOICE_SETTINGS = {
     stability: 0.35,
     similarity_boost: 0.95,
-    style: 0.4,
-    speed: 1.0,
+    style: 0.45,
+    speed: 0.9,
     use_speaker_boost: true,
   };
   const TEAM_NAME = 'Bloordale';
@@ -1387,7 +1387,7 @@
     const spoken = (player.pronunciation || `${player.firstName} ${player.lastName}`).trim();
     const text = ANNOUNCE_WITH_NUMBERS
       ? `Now batting for ${TEAM_NAME}: number ${player.number}, ${spoken}!`
-      : `Now batting, ${spoken}`;
+      : `Now batting: ${spoken}!`;
 
     try {
       const res = await fetch(
