@@ -67,7 +67,8 @@ no stability, similarity, style, or speed parameter on any TTS model here
 it generates with the voice's defaults. Use Path B when the exact dial positions
 matter.
 
-Files generated this way on 2026-09-15:
+A first pass was generated this way on 2026-09-15 and then re-rendered through
+Path B to pick up the settings. The takes are still on the canvas:
 <https://elevenlabs.io/app/flows/b7dqzPdYuavXyhh3B9lV>
 
 ## Path B — script against the REST API
