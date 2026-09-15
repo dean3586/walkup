@@ -1,1 +1,5 @@
 *.mp3 filter=lfs diff=lfs merge=lfs -text
+# Announcements are small and get rewritten by the regenerate endpoint, which
+# commits through the GitHub API and cannot produce LFS pointers. Keep them as
+# ordinary blobs; walk-up songs stay in LFS.
+audio/announcements/*.mp3 !filter !diff !merge -text

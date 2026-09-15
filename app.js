@@ -30,6 +30,15 @@
   // One shared row in Supabase keeps selections + settings in sync across
   // devices. The publishable key is public by design; RLS limits anon access
   // to this single table only.
+  // Re-recording an announcement needs the ElevenLabs key, which cannot live in
+  // a public static app, so a small passcode-gated endpoint holds it.
+  const REGEN_ENDPOINT = /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
+    ? 'http://127.0.0.1:8788/api/regenerate'
+    : 'https://walkup-regen.vercel.app/api/regenerate';
+  // Flip to true once the team has real jersey numbers, so re-records say
+  // "Now batting for Bloordale: number 5, ..." instead of just the name.
+  const ANNOUNCE_WITH_NUMBERS = false;
+
   const SUPABASE_URL = 'https://uijbrrvchglumgvleeoo.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL';
   const CONFIG_ROW = 'default';
@@ -149,6 +158,17 @@
         player.walkup.file = url;
         player._isUploaded = true;
       }
+    }
+  }
+
+  // A re-recorded announcement is kept on the device that made it, under a
+  // string key so it cannot collide with the uploaded walk-up songs (numbers).
+  const annKey = (playerNumber) => 'ann-' + playerNumber;
+
+  async function loadAnnouncementOverrides() {
+    for (const player of roster) {
+      const blob = await getAudioFile(annKey(player.number));
+      if (blob) player.announcement = URL.createObjectURL(blob);
     }
   }
 
@@ -756,6 +776,7 @@
     await loadUploadedAudio();
     loadDeezerInfo();
     loadPronunciations();
+    await loadAnnouncementOverrides();
 
     const saved = localStorage.getItem('walkup-lineup');
     if (saved) {
@@ -1097,7 +1118,10 @@
                  value="${escapeHtml(player.pronunciation || '')}"
                  placeholder="${escapeHtml(player.firstName + ' ' + player.lastName)}"
                  spellcheck="false" autocapitalize="off">
+          <button class="regen-btn" data-number="${player.number}"
+                  title="Re-record this announcement">Re-record</button>
         </label>
+        <div class="regen-status" data-number="${player.number}"></div>
         <div class="waveform-container" data-number="${player.number}">
           ${hasWalkup
             ? `<canvas class="waveform-canvas" data-number="${player.number}"></canvas>
@@ -1131,6 +1155,16 @@
         const value = input.value.trim();
         player.pronunciation = value || null;
         savePronunciations();
+      });
+    });
+
+    // Re-record buttons
+    songSettingsList.querySelectorAll('.regen-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const num = parseInt(btn.dataset.number);
+        const player = roster.find(p => p.number === num);
+        const statusEl = songSettingsList.querySelector(`.regen-status[data-number="${num}"]`);
+        if (player && statusEl) regenerateAnnouncement(player, btn, statusEl);
       });
     });
 
@@ -1282,6 +1316,62 @@
         if (map[p.number] !== undefined) p.pronunciation = map[p.number] || null;
       });
     } catch (e) {}
+  }
+
+  // === Re-recording announcements ===
+  function regenPasscode() {
+    return localStorage.getItem('walkup-regen-passcode') || '';
+  }
+
+  async function regenerateAnnouncement(player, btn, statusEl) {
+    const passcode = regenPasscode();
+    if (!passcode) {
+      statusEl.textContent = 'Enter the passcode at the top of Settings first.';
+      return;
+    }
+
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '...';
+    statusEl.textContent = 'Recording...';
+
+    try {
+      const res = await fetch(REGEN_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          passcode,
+          number: player.number,
+          firstName: player.firstName,
+          lastName: player.lastName,
+          pronunciation: player.pronunciation || '',
+          withNumbers: ANNOUNCE_WITH_NUMBERS,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+
+      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+      await saveAudioFile(annKey(player.number), blob);
+      if (player._annUrl) URL.revokeObjectURL(player._annUrl);
+      player._annUrl = URL.createObjectURL(blob);
+      player.announcement = player._annUrl;
+
+      statusEl.textContent = data.committed
+        ? `Saved for everyone: "${data.text}"`
+        : `Saved on this device: "${data.text}"`;
+
+      // Play it back so the pronunciation can be judged immediately.
+      announcementAudio.src = player.announcement;
+      announcementAudio.currentTime = 0;
+      announcementAudio.play().catch(() => {});
+    } catch (err) {
+      statusEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   }
 
   // === Waveform rendering ===
@@ -1544,6 +1634,15 @@
       const total = getTotalDuration();
       seekTo(pct * total);
     });
+
+    // Re-record passcode — kept on the device so it is typed once, not per name
+    const passcodeInput = document.getElementById('regen-passcode');
+    if (passcodeInput) {
+      passcodeInput.value = regenPasscode();
+      passcodeInput.addEventListener('input', () => {
+        localStorage.setItem('walkup-regen-passcode', passcodeInput.value.trim());
+      });
+    }
 
     // Search modal
     document.getElementById('search-close').addEventListener('click', closeSearchModal);

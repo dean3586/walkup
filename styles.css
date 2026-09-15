@@ -1649,6 +1649,57 @@ main {
   border-color: var(--accent);
 }
 
+.regen-passcode-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+#regen-passcode {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.regen-btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-s) var(--ease), color var(--dur-s) var(--ease);
+}
+
+.regen-btn:hover:not(:disabled) {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.regen-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.regen-status:not(:empty) {
+  margin: 0 0 6px;
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+}
+
 .search-note {
   padding: 8px 8px 4px;
   color: var(--text-tertiary);

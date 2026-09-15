@@ -68,6 +68,18 @@ When it sounds right, put it in `roster.json` and re-render for real:
 removed — `Mark O'Shea` becomes `MarkOShea.mp3`. `roster.json` points at these
 paths in each player's `announcement` field.
 
+## Re-recording from the app
+
+Settings has a "Re-record" button beside each pronunciation field, so a name can
+be fixed at the field instead of from a laptop. It posts to the endpoint in
+`tools/regen-api/` (README there), which holds the ElevenLabs key and checks a
+passcode typed once per browser. The new take plays immediately and is kept on
+that device; once the endpoint has a `GITHUB_TOKEN` it also commits the MP3, and
+every phone picks it up on the next Pages deploy.
+
+Re-records use the same voice and settings as the script below. Announcements
+phrase with numbers when `ANNOUNCE_WITH_NUMBERS` in `app.js` is flipped to true.
+
 ## Path A — hosted MCP server (no API key)
 
 ElevenLabs runs a hosted MCP server that authenticates with OAuth, so nothing is
