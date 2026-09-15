@@ -3,6 +3,7 @@
     "number": 1,
     "firstName": "Nolan",
     "lastName": "Pitton",
+    "pronunciation": null,
     "announcement": "audio/announcements/NolanPitton.mp3",
     "walkup": null
   },
@@ -10,6 +11,7 @@
     "number": 2,
     "firstName": "Charlie",
     "lastName": "Mondoux",
+    "pronunciation": null,
     "announcement": "audio/announcements/CharlieMondoux.mp3",
     "walkup": null
   },
@@ -17,6 +19,7 @@
     "number": 3,
     "firstName": "Joseph",
     "lastName": "Fotia",
+    "pronunciation": null,
     "announcement": "audio/announcements/JosephFotia.mp3",
     "walkup": null
   },
@@ -24,6 +27,7 @@
     "number": 4,
     "firstName": "Matthew",
     "lastName": "Birka",
+    "pronunciation": null,
     "announcement": "audio/announcements/MatthewBirka.mp3",
     "walkup": null
   }

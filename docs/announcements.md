@@ -29,6 +29,39 @@ With jersey numbers (once they are assigned):
 
     Now batting for Bloordale: number {number}, {First} {Last}!
 
+## Pronunciation
+
+Each player in `roster.json` has a `pronunciation` field. Leave it `null` and the
+announcer says the real name; set it and that string is spoken instead:
+
+    {
+      "number": 2,
+      "firstName": "Charlie",
+      "lastName": "Mondoux",
+      "pronunciation": "Charlie mon-DOO",
+      ...
+    }
+
+It only changes what is spoken. The name on screen and the MP3 filename still
+come from `firstName` and `lastName`, so a respelling never renames a file or
+breaks the roster.
+
+Write it as a respelling: hyphens between syllables, capitals on the stressed
+one — `mon-DOO`, `FOH-tee-uh`, `BUR-kuh`. That is the available lever on
+`eleven_multilingual_v2`: SSML phoneme tags work only on `eleven_flash_v2`, and
+IPA-in-slashes (`/ˌbaɪoʊˈkemɪstri/`) only on `eleven_v3`. If a respelling refuses
+to land, `<lexeme><grapheme>Mondoux</grapheme><alias>mon-DOO</alias></lexeme>` is
+the v2-compatible fallback and can go straight in the field.
+
+Audition one without overwriting a committed file — `--names` takes
+`[Number:]Name[=Pronunciation]`:
+
+    python tools/generate_announcements.py --force --out-dir %TEMP%         --names "Charlie Mondoux=Charlie mon-DOO"
+
+When it sounds right, put it in `roster.json` and re-render for real:
+
+    python tools/generate_announcements.py --force
+
 ## File naming
 
 `audio/announcements/{First}{Last}.mp3` with every non-alphanumeric character
