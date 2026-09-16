@@ -8,7 +8,7 @@
 //      GITHUB_TOKEN + GITHUB_REPO (optional — commits the result when set).
 
 const MODEL_ID = 'eleven_multilingual_v2';
-const VOICE_ID = process.env.ELEVEN_VOICE_ID || 'dhlnEOuE4v7Hy8nuusjU'; // Baseball Voice Three
+const VOICE_ID = process.env.ELEVEN_VOICE_ID || 'ymICdMZoQRE2xrJTPSjR'; // Baseball Voice Four
 
 // Same dial positions as tools/generate_announcements.py. Change one, change
 // the other, or a re-record stops matching the committed files.
