@@ -30,29 +30,10 @@
   // One shared row in Supabase keeps selections + settings in sync across
   // devices. The publishable key is public by design; RLS limits anon access
   // to this single table only.
-  // Re-recording calls ElevenLabs straight from the browser — no server. This key
-  // is deliberately public and deliberately restricted: it is capped at a small
-  // credit quota, so the worst a stray copy can do is spend a few
-  // announcements' worth of credit and stop.
-  const ELEVEN_API_KEY = 'sk_649990941ca77dfec28a3c95e2a20d962dedd45e6c64b0cc';
-  const ELEVEN_VOICE_ID = 'dhlnEOuE4v7Hy8nuusjU'; // Baseball Voice Three
-  const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
-  // Matches tools/generate_announcements.py — change both together or
-  // re-recordings will not match the committed files.
-  const ELEVEN_VOICE_SETTINGS = {
-    stability: 0.9,
-    similarity_boost: 1.0,
-    style: 0.15,
-    speed: 0.9,
-    use_speaker_boost: true,
-  };
-  // Gate for the re-record buttons. Embedded on purpose: it stops someone at the
-  // game from spending credits by accident, and the endpoint checks it too, so
-  // this copy is a UI gate rather than the thing protecting the key.
-  const REGEN_PASSCODE = '2026';
-  // Whether re-records name the jersey number. Set in Settings, synced with
-  // everything else. It changes the next recording, not the files already made.
-  let announceWithNumbers = false;
+  // Re-recording goes through a small endpoint that holds the ElevenLabs key,
+  // checks the passcode, and commits the MP3 to the repo so every device gets
+  // it. Nothing secret lives in this file. Source: tools/regen-api.
+  const REGEN_ENDPOINT = 'https://walkup-regen.vercel.app/api/regenerate';
 
   const SUPABASE_URL = 'https://uijbrrvchglumgvleeoo.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL';
@@ -1457,51 +1438,53 @@
       statusEl.textContent = 'Enter the passcode at the top of Settings first.';
       return;
     }
-    if (ELEVEN_API_KEY.startsWith('PASTE_')) {
-      statusEl.textContent = 'No recording key is set up yet.';
-      return;
-    }
 
     btn.disabled = true;
     const label = btn.textContent;
     btn.textContent = '...';
     statusEl.textContent = 'Recording...';
 
-    const spoken = (player.pronunciation || `${player.firstName} ${player.lastName}`).trim();
-    const text = announceWithNumbers
-      ? `Now batting ... number ${jerseyOf(player)} ... ${spoken}!`
-      : `Now batting ... ${spoken}!`;
-
     try {
-      const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
-        {
-          method: 'POST',
-          headers: { 'xi-api-key': ELEVEN_API_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            model_id: ELEVEN_MODEL_ID,
-            voice_settings: ELEVEN_VOICE_SETTINGS,
-          }),
-        }
-      );
+      const res = await fetch(REGEN_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          passcode: regenPasscode(),
+          firstName: player.firstName,
+          lastName: player.lastName,
+          pronunciation: player.pronunciation || '',
+          jersey: jerseyOf(player),
+          withNumbers: announceWithNumbers,
+        }),
+      });
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const detail = await res.text().catch(() => '');
-        if (res.status === 401) throw new Error('The recording key was rejected — it may need replacing.');
-        if (res.status === 429 || /quota|credit/i.test(detail)) {
-          throw new Error('Out of recording credits for now.');
-        }
-        throw new Error(`Recording failed (${res.status})`);
+        const detail = `${data.error || ''} ${data.detail || ''}`;
+        if (/quota|credit/i.test(detail)) throw new Error('Out of recording credits.');
+        if (res.status === 401) throw new Error('Wrong passcode.');
+        throw new Error(data.error || `Recording failed (${res.status})`);
       }
 
-      const blob = await res.blob();
-      await saveAudioFile(annKey(player.number), blob);
+      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+
+      if (data.committed) {
+        // The team copy is the real one. Keeping a device copy would shadow it
+        // the next time someone else re-records this player, so drop any old
+        // override and play this take from memory until the deploy lands.
+        await removeAudioFile(annKey(player.number)).catch(() => {});
+      } else {
+        await saveAudioFile(annKey(player.number), blob);
+      }
+
       if (player._annUrl) URL.revokeObjectURL(player._annUrl);
       player._annUrl = URL.createObjectURL(blob);
       player.announcement = player._annUrl;
 
-      statusEl.textContent = `Saved on this device: "${text}"`;
+      statusEl.textContent = data.committed
+        ? `Saved for everyone: "${data.text}"`
+        : `On this device only (${data.reason || 'not committed'}): "${data.text}"`;
 
       // Play it back so the pronunciation can be judged immediately.
       announcementAudio.src = player.announcement;
@@ -1509,7 +1492,7 @@
       announcementAudio.play().catch(() => {});
     } catch (err) {
       statusEl.textContent = (err instanceof TypeError)
-        ? 'Could not reach ElevenLabs — check the connection.'
+        ? 'Could not reach the recording service.'
         : err.message;
     } finally {
       btn.disabled = false;
