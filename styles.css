@@ -1666,6 +1666,22 @@ main {
   border-color: var(--accent);
 }
 
+.settings-lock-hint {
+  margin: 0 0 16px;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.settings-lock-hint.unlocked {
+  color: var(--green);
+}
+
+#settings-view input:disabled,
+#settings-view button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .announce-toggle {
   display: flex;
   align-items: center;

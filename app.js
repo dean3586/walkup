@@ -649,9 +649,13 @@
   });
 
   // === Cloud sync helpers ===
+  // What syncs is the team's setup: songs, start times, pronunciations, jersey
+  // numbers, announcement phrasing, playback length. One central copy, edited
+  // behind the passcode. The batting order deliberately does not sync — it is
+  // how one device runs one game, and two people opening the app should not
+  // fight over it.
   function collectConfigData() {
     return {
-      lineup: lineup,
       globalDuration: globalDuration,
       startTimes: buildStartTimes(),
       deezer: buildDeezerInfo(),
@@ -662,8 +666,7 @@
   }
 
   function configHasContent(cfg) {
-    return (cfg.lineup && cfg.lineup.length) ||
-      (cfg.deezer && Object.keys(cfg.deezer).length) ||
+    return (cfg.deezer && Object.keys(cfg.deezer).length) ||
       (cfg.startTimes && Object.keys(cfg.startTimes).length) ||
       (cfg.pronunciations && Object.keys(cfg.pronunciations).length);
   }
@@ -673,13 +676,6 @@
     if (!data || typeof data !== 'object') return;
     applyingRemote = true;
     try {
-      // Lineup
-      if (Array.isArray(data.lineup)) {
-        const rosterNums = new Set(roster.map(p => p.number));
-        lineup = data.lineup.filter(n => rosterNums.has(n));
-        localStorage.setItem('walkup-lineup', JSON.stringify(lineup));
-      }
-
       // Global duration
       if (typeof data.globalDuration === 'number') {
         globalDuration = data.globalDuration;
@@ -1123,8 +1119,8 @@
   }
 
   function saveLineup() {
+    // Device-local: the batting order is not part of the shared setup.
     localStorage.setItem('walkup-lineup', JSON.stringify(lineup));
-    scheduleSync();
   }
 
   // === Settings rendering ===
@@ -1316,6 +1312,7 @@
 
       // Mouse drag
       canvas.addEventListener('mousedown', (e) => {
+        if (!regenUnlocked()) return;
         e.preventDefault();
         setStartFromEvent(e, e.clientX);
         function onMove(ev) { setStartFromEvent(ev, ev.clientX); }
@@ -1329,6 +1326,7 @@
 
       // Touch drag
       canvas.addEventListener('touchstart', (e) => {
+        if (!regenUnlocked()) return;
         e.preventDefault();
         setStartFromEvent(e, e.touches[0].clientX);
       }, { passive: false });
@@ -1433,7 +1431,25 @@
   }
 
   function applyRegenLock() {
-    document.body.classList.toggle('regen-unlocked', regenUnlocked());
+    const unlocked = regenUnlocked();
+    const hint = document.getElementById('settings-lock-hint');
+    if (hint) {
+      hint.textContent = unlocked
+        ? 'Unlocked — changes here reach every device.'
+        : 'Locked. These settings are shared by the whole team; enter the passcode to change them.';
+      hint.classList.toggle('unlocked', unlocked);
+    }
+    document.body.classList.toggle('regen-unlocked', unlocked);
+
+    // Everything in Settings edits the shared setup, so it is read-only until
+    // the passcode is entered. The lock is a guard against a stray tap at the
+    // field, not a security boundary.
+    document.querySelectorAll(
+      '#settings-view input, #settings-view button, #settings-view select'
+    ).forEach(el => {
+      if (el.id === 'regen-passcode') return;
+      el.disabled = !unlocked;
+    });
   }
 
   async function regenerateAnnouncement(player, btn, statusEl) {
@@ -1597,6 +1613,7 @@
   // === Drag-and-drop file upload ===
   function attachDropHandlers(element, player) {
     element.addEventListener('dragover', (e) => {
+      if (!regenUnlocked()) return;
       // Only show drop zone if files are being dragged
       if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
         e.preventDefault();
