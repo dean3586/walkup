@@ -13,7 +13,7 @@ const VOICE_ID = process.env.ELEVEN_VOICE_ID || 'ymICdMZoQRE2xrJTPSjR'; // Baseb
 // Same dial positions as tools/generate_announcements.py. Change one, change
 // the other, or a re-record stops matching the committed files.
 const VOICE_SETTINGS = {
-  stability: 0.95,
+  stability: 0.75,
   similarity_boost: 0.95,
   style: 0.15,
   speed: 0.9,
