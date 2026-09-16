@@ -86,5 +86,13 @@
     "pronunciation": null,
     "announcement": "audio/announcements/SullivanReid.mp3",
     "walkup": null
+  },
+  {
+    "number": 12,
+    "firstName": "Cooper",
+    "lastName": "Out",
+    "pronunciation": null,
+    "announcement": "audio/announcements/CooperOut.mp3",
+    "walkup": null
   }
 ]
