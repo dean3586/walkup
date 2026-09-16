@@ -206,6 +206,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the lines, call nothing")
     ap.add_argument("--out-dir", default=OUT_DIR,
                     help="where to write the MP3s (default: audio/announcements)")
+    ap.add_argument("--stability", type=float, metavar="0-1",
+                    help="override stability for this run (auditioning only)")
+    ap.add_argument("--similarity", type=float, metavar="0-1",
+                    help="override similarity for this run (auditioning only)")
     ap.add_argument("--say", nargs=2, action="append", metavar=("LABEL", "TEXT"),
                     help="record arbitrary text as LABEL.mp3 — for auditioning "
                          "phrasing or pronunciation side by side")
@@ -219,6 +223,11 @@ def main():
     if args.history:
         show_history(load_key(args.key_file), args.history)
         return
+
+    if args.stability is not None:
+        VOICE_SETTINGS["stability"] = args.stability
+    if args.similarity is not None:
+        VOICE_SETTINGS["similarity_boost"] = args.similarity
 
     if args.say:
         key = load_key(args.key_file)
