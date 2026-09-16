@@ -25,14 +25,19 @@ pushing exaggeration on top of that destabilises the read.
 
 Without jersey numbers (current):
 
-    Now batting ... {First} {Last}!
+    Now batting ... {First} {Last}.
 
 With jersey numbers:
 
-    Now batting ... number {jersey} ... {First} {Last}!
+    Now batting ... number {jersey} ... {First} {Last}.
 
 The ellipses are pauses, and they matter — the announcer builds to the name
 instead of reading a flat line. Say "for Bloordale" and it goes back in.
+
+The line ends on a period rather than an exclamation on purpose. With a bang the
+voice released the final consonant with a flourish that came out as a hiss —
+"Pitton" sounding like "Pittons". A period fixed it and a comma in place of the
+first ellipsis fixed it too, so either lever works if it ever returns.
 
 ## Jersey numbers
 

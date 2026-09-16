@@ -117,8 +117,8 @@ def phrase(first, last, number, with_numbers, spoken=None):
     if with_numbers:
         if number is None:
             sys.exit("--numbers needs a jersey number for %s %s" % (first, last))
-        return "Now batting ... number %s ... %s!" % (number, name)
-    return "Now batting ... %s!" % name
+        return "Now batting ... number %s ... %s." % (number, name)
+    return "Now batting ... %s." % name
 
 
 def show_history(key, limit):

@@ -34,10 +34,13 @@ function slug(first, last) {
 
 function phrase({ firstName, lastName, pronunciation, jersey, withNumbers }) {
   const name = (pronunciation || `${firstName} ${lastName}`).trim();
+  // Ends on a period, not an exclamation: the bang made the voice release the
+  // final consonant with a flourish that came out as a hiss on names ending
+  // in n. The ellipses stay — they are the pauses that build the crescendo.
   if (withNumbers && jersey != null && jersey !== '') {
-    return `Now batting ... number ${jersey} ... ${name}!`;
+    return `Now batting ... number ${jersey} ... ${name}.`;
   }
-  return `Now batting ... ${name}!`;
+  return `Now batting ... ${name}.`;
 }
 
 async function commitToGitHub(path, base64, message) {
