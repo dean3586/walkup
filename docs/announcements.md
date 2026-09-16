@@ -11,8 +11,8 @@ re-run sounds like the existing files.
 | Voice | Baseball Announcer Two (custom) | `SzhLxXqLBlrRykTRhsSA` |
 | Model | Multilingual v2 | `eleven_multilingual_v2` |
 | Speed | 0.9 | `speed: 0.9` |
-| Stability | 35% | `stability: 0.35` |
-| Similarity | 95% | `similarity_boost: 0.95` |
+| Stability | 90% | `stability: 0.90` |
+| Similarity | 100% | `similarity_boost: 1.0` |
 | Style Exaggeration | 45% | `style: 0.45` |
 | Speaker boost | on | `use_speaker_boost: true` |
 | Output | — | `mp3_44100_128` |
@@ -23,11 +23,31 @@ Style exaggeration and speed need a v2 model; `eleven_v3` ignores them.
 
 Without jersey numbers (current):
 
-    Now batting: {First} {Last}!
+    Now batting ... {First} {Last}!
 
-With jersey numbers (once they are assigned):
+With jersey numbers:
 
-    Now batting for Bloordale: number {number}, {First} {Last}!
+    Now batting ... number {jersey} ... {First} {Last}!
+
+The ellipses are pauses, and they matter — the announcer builds to the name
+instead of reading a flat line. Say "for Bloordale" and it goes back in.
+
+## Jersey numbers
+
+Every player carries two numbers. `number` in `roster.json` is the internal id:
+lineups, song picks, start times and stored re-records are all keyed by it, so
+it never changes. `jersey` is the number on the shirt — blank until assigned,
+editable in the app, and the one that gets displayed and announced.
+
+Set them in Settings: the `#` box beside each player's name. The checkbox above,
+"Say jersey numbers", decides which of the two phrasings a re-record uses. Both
+sync across devices with everything else, and both take effect the next time an
+announcement is recorded, not during playback.
+
+From the command line the jersey comes out of `roster.json`, or from `--names`
+as `17:Nolan Pitton`, with `--numbers` choosing the phrasing:
+
+    python tools/generate_announcements.py --numbers --force
 
 ## Pronunciation
 

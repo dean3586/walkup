@@ -1666,6 +1666,39 @@ main {
   border-color: var(--accent);
 }
 
+.announce-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.announce-toggle input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.jersey-input {
+  width: 2.2em;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-glass);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.jersey-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .regen-passcode-field {
   display: flex;
   align-items: center;

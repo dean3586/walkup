@@ -40,20 +40,19 @@
   // Matches tools/generate_announcements.py — change both together or
   // re-recordings will not match the committed files.
   const ELEVEN_VOICE_SETTINGS = {
-    stability: 0.35,
-    similarity_boost: 0.95,
+    stability: 0.9,
+    similarity_boost: 1.0,
     style: 0.45,
     speed: 0.9,
     use_speaker_boost: true,
   };
-  const TEAM_NAME = 'Bloordale';
   // Gate for the re-record buttons. Embedded on purpose: it stops someone at the
   // game from spending credits by accident, and the endpoint checks it too, so
   // this copy is a UI gate rather than the thing protecting the key.
   const REGEN_PASSCODE = '2026';
-  // Flip to true once the team has real jersey numbers, so re-records say
-  // "Now batting for Bloordale: number 5, ..." instead of just the name.
-  const ANNOUNCE_WITH_NUMBERS = false;
+  // Whether re-records name the jersey number. Set in Settings, synced with
+  // everything else. It changes the next recording, not the files already made.
+  let announceWithNumbers = false;
 
   const SUPABASE_URL = 'https://uijbrrvchglumgvleeoo.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL';
@@ -281,7 +280,7 @@
     const playerLabel = document.getElementById('search-player-label');
     const results = document.getElementById('search-results');
 
-    playerLabel.textContent = `#${player.number} ${player.firstName} ${player.lastName}`;
+    playerLabel.textContent = `#${jerseyOf(player)} ${player.firstName} ${player.lastName}`;
     input.value = '';
     results.innerHTML = '<div class="search-empty">Search for a song above</div>';
     modal.classList.remove('hidden');
@@ -657,6 +656,8 @@
       startTimes: buildStartTimes(),
       deezer: buildDeezerInfo(),
       pronunciations: buildPronunciations(),
+      jerseys: buildJerseys(),
+      announceWithNumbers: announceWithNumbers,
     };
   }
 
@@ -728,6 +729,17 @@
         localStorage.setItem('walkup-pronunciations', JSON.stringify(data.pronunciations));
       }
 
+      if (data.jerseys) {
+        roster.forEach(p => { p.jersey = data.jerseys[p.number] ?? null; });
+        localStorage.setItem('walkup-jerseys', JSON.stringify(data.jerseys));
+      }
+      if (typeof data.announceWithNumbers === 'boolean') {
+        announceWithNumbers = data.announceWithNumbers;
+        localStorage.setItem('walkup-announce-numbers', announceWithNumbers);
+        const box = document.getElementById('announce-numbers');
+        if (box) box.checked = announceWithNumbers;
+      }
+
       renderRoster();
       renderLineup();
       renderSettings();
@@ -792,6 +804,7 @@
     await loadUploadedAudio();
     loadDeezerInfo();
     loadPronunciations();
+    loadJerseys();
     await loadAnnouncementOverrides();
 
     const saved = localStorage.getItem('walkup-lineup');
@@ -866,7 +879,7 @@
       const hasWalkup = player.walkup !== null;
       const dz = player._deezerTrack;
       card.innerHTML = `
-        <div class="player-card-number">#${player.number}</div>
+        <div class="player-card-number">#${jerseyOf(player)}</div>
         <div class="player-card-info">
           <span class="player-card-first">${player.firstName}</span>
           <span class="player-card-last">${player.lastName}</span>
@@ -945,7 +958,7 @@
             </svg>
           </span>
           <span class="lineup-position">${idx + 1}</span>
-          <span class="lineup-player-number">#${player.number}</span>
+          <span class="lineup-player-number">#${jerseyOf(player)}</span>
           <span class="lineup-player-info">
             <span class="lineup-player-name">${player.firstName} ${player.lastName}</span>
             ${player._deezerTrack ? `<span class="lineup-player-song">${escapeHtml(player._deezerTrack.title)} · ${escapeHtml(player._deezerTrack.artist)}</span>` : ''}
@@ -1086,7 +1099,7 @@
       const el = document.createElement('div');
       el.className = 'available-player';
       el.innerHTML = `
-        <span class="num">#${player.number}</span>
+        <span class="num">#${jerseyOf(player)}</span>
         <span class="name">${player.firstName} ${player.lastName}</span>
       `;
       el.title = 'Tap to put back in the order';
@@ -1136,7 +1149,10 @@
       row.innerHTML = `
         <div class="song-setting-header">
           <div class="song-setting-player">
-            <span class="song-setting-number">#${player.number}</span>
+            <span class="song-setting-number">#<input class="jersey-input" type="text"
+                  inputmode="numeric" maxlength="2" data-number="${player.number}"
+                  value="${player.jersey == null ? '' : escapeHtml(String(player.jersey))}"
+                  placeholder="${player.number}" aria-label="Jersey number"></span>
             <span class="song-setting-name">${player.firstName} ${player.lastName}</span>
           </div>
           <div class="song-setting-actions">
@@ -1195,6 +1211,21 @@
 
     applyRegenLock();
 
+    // Jersey numbers — the shirt number, not the internal id
+    songSettingsList.querySelectorAll('.jersey-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const num = parseInt(input.dataset.number);
+        const player = roster.find(p => p.number === num);
+        if (!player) return;
+        const value = input.value.replace(/[^0-9]/g, '').slice(0, 2);
+        if (value !== input.value) input.value = value;
+        player.jersey = value === '' ? null : value;
+        saveJerseys();
+        renderRoster();
+        renderLineup();
+      });
+    });
+
     // Re-record buttons
     songSettingsList.querySelectorAll('.regen-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1242,7 +1273,7 @@
         const player = roster.find(p => p.number === num);
         if (!player) return;
         const ok = await showConfirm(
-          `Remove walk-up song for<br><strong>#${player.number} ${player.firstName} ${player.lastName}</strong>?`
+          `Remove walk-up song for<br><strong>#${jerseyOf(player)} ${player.firstName} ${player.lastName}</strong>?`
         );
         if (!ok) return;
 
@@ -1327,6 +1358,42 @@
     scheduleSync();
   }
 
+  // A player's `number` is their internal id — lineups, song picks, start times
+  // and stored announcements are all keyed by it, so it never changes. `jersey`
+  // is the number on the shirt: editable, and what gets displayed and announced.
+  function jerseyOf(player) {
+    return (player.jersey === null || player.jersey === undefined || player.jersey === '')
+      ? player.number
+      : player.jersey;
+  }
+
+  function buildJerseys() {
+    const out = {};
+    roster.forEach(p => {
+      if (p.jersey !== null && p.jersey !== undefined && p.jersey !== '') out[p.number] = p.jersey;
+    });
+    return out;
+  }
+
+  function saveJerseys() {
+    localStorage.setItem('walkup-jerseys', JSON.stringify(buildJerseys()));
+    scheduleSync();
+  }
+
+  function loadJerseys() {
+    const saved = localStorage.getItem('walkup-jerseys');
+    if (saved) {
+      try {
+        const map = JSON.parse(saved);
+        roster.forEach(p => {
+          if (map[p.number] !== undefined) p.jersey = map[p.number];
+        });
+      } catch (e) {}
+    }
+    const flag = localStorage.getItem('walkup-announce-numbers');
+    if (flag !== null) announceWithNumbers = flag === 'true';
+  }
+
   // === Pronunciations ===
   // A respelling of a player's name — "Charlie mon-DOO" — used when the
   // announcement audio is regenerated, not during playback. Edited here so
@@ -1385,9 +1452,9 @@
     statusEl.textContent = 'Recording...';
 
     const spoken = (player.pronunciation || `${player.firstName} ${player.lastName}`).trim();
-    const text = ANNOUNCE_WITH_NUMBERS
-      ? `Now batting for ${TEAM_NAME}: number ${player.number}, ${spoken}!`
-      : `Now batting: ${spoken}!`;
+    const text = announceWithNumbers
+      ? `Now batting ... number ${jerseyOf(player)} ... ${spoken}!`
+      : `Now batting ... ${spoken}!`;
 
     try {
       const res = await fetch(
@@ -1695,6 +1762,17 @@
       seekTo(pct * total);
     });
 
+    // Say-the-number toggle — applies to the next recording, not to playback
+    const announceBox = document.getElementById('announce-numbers');
+    if (announceBox) {
+      announceBox.checked = announceWithNumbers;
+      announceBox.addEventListener('change', () => {
+        announceWithNumbers = announceBox.checked;
+        localStorage.setItem('walkup-announce-numbers', announceWithNumbers);
+        scheduleSync();
+      });
+    }
+
     // Re-record passcode — kept on the device so it is typed once, not per name
     const passcodeInput = document.getElementById('regen-passcode');
     if (passcodeInput) {
@@ -1816,7 +1894,7 @@
     }
 
     npCurrentLabel.textContent = 'Now Batting';
-    npNumber.textContent = '#' + activePlayer.number;
+    npNumber.textContent = '#' + jerseyOf(activePlayer);
     npName.textContent = activePlayer.firstName + ' ' + activePlayer.lastName;
 
     // Album art and song name in fullscreen
@@ -1926,7 +2004,7 @@
     if (!('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: `#${player.number} ${player.firstName} ${player.lastName}`,
+        title: `#${jerseyOf(player)} ${player.firstName} ${player.lastName}`,
         artist: 'Now Batting',
         album: 'Bloordale Walk-Up',
         artwork: [
@@ -2164,7 +2242,7 @@
       playbackSongName.classList.add('hidden');
       return;
     }
-    playbackNumber.textContent = '#' + player.number;
+    playbackNumber.textContent = '#' + jerseyOf(player);
     playbackName.textContent = player.firstName + ' ' + player.lastName;
     playbackStatus.textContent = playbackPhase ? 'Now Batting' : 'Up Next';
     const dz = player._deezerTrack;
@@ -2183,7 +2261,7 @@
   }
 
   function showPlaybackInfo(player) {
-    playbackNumber.textContent = '#' + player.number;
+    playbackNumber.textContent = '#' + jerseyOf(player);
     playbackName.textContent = player.firstName + ' ' + player.lastName;
     playbackStatus.textContent = 'Now Batting';
     progressFill.style.width = '0%';

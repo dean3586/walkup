@@ -43,12 +43,11 @@ SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
 VOICE_NAME = "Baseball Announcer Two"
 MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
 OUTPUT_FORMAT = "mp3_44100_128"
-TEAM = "Bloordale"
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
-    "stability": 0.35,          # UI: Stability 35%
-    "similarity_boost": 0.95,   # UI: Similarity 95%
+    "stability": 0.90,          # UI: Stability 90%
+    "similarity_boost": 1.0,    # UI: Similarity 100%
     "style": 0.45,              # UI: Style Exaggeration 45%
     "speed": 0.9,               # UI: Speed 0.9
     "use_speaker_boost": True,
@@ -118,8 +117,8 @@ def phrase(first, last, number, with_numbers, spoken=None):
     if with_numbers:
         if number is None:
             sys.exit("--numbers needs a jersey number for %s %s" % (first, last))
-        return "Now batting for %s: number %s, %s!" % (TEAM, number, name)
-    return "Now batting: %s!" % name
+        return "Now batting ... number %s ... %s!" % (number, name)
+    return "Now batting ... %s!" % name
 
 
 def show_history(key, limit):
@@ -158,7 +157,9 @@ def cloud_pronunciations():
 def players_from_roster():
     with open(os.path.join(ROOT, "roster.json"), encoding="utf-8") as fh:
         roster = json.load(fh)
-    return [(p["firstName"], p["lastName"], p.get("number"),
+    # "jersey" is the shirt number; "number" is the internal id used as a
+    # placeholder until a jersey is assigned.
+    return [(p["firstName"], p["lastName"], p.get("jersey") or p.get("number"),
              p.get("pronunciation")) for p in roster]
 
 
@@ -198,7 +199,7 @@ def main():
     ap.add_argument("--names", nargs="+", metavar='"[Number:]Name"',
                     help="players to generate instead of reading roster.json")
     ap.add_argument("--numbers", action="store_true",
-                    help='use the "Now batting for %s: number N, Name!" phrasing' % TEAM)
+                    help='use the "Now batting ... number N ... Name!" phrasing')
     ap.add_argument("--voice", default=VOICE_NAME, help="voice name (default: %s)" % VOICE_NAME)
     ap.add_argument("--key-file", default="~/.elevenlabs-key")
     ap.add_argument("--force", action="store_true", help="overwrite existing MP3s")

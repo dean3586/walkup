@@ -3,6 +3,7 @@
     "number": 1,
     "firstName": "Nolan",
     "lastName": "Pitton",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/NolanPitton.mp3",
     "walkup": null
@@ -11,6 +12,7 @@
     "number": 2,
     "firstName": "Charlie",
     "lastName": "Mondoux",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/CharlieMondoux.mp3",
     "walkup": null
@@ -19,6 +21,7 @@
     "number": 3,
     "firstName": "Joseph",
     "lastName": "Fotia",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/JosephFotia.mp3",
     "walkup": null
@@ -27,6 +30,7 @@
     "number": 4,
     "firstName": "Matthew",
     "lastName": "Birka",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/MatthewBirka.mp3",
     "walkup": null
@@ -35,6 +39,7 @@
     "number": 5,
     "firstName": "Easton",
     "lastName": "McGillivray",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/EastonMcGillivray.mp3",
     "walkup": null
@@ -43,6 +48,7 @@
     "number": 6,
     "firstName": "Elliot",
     "lastName": "Santos",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/ElliotSantos.mp3",
     "walkup": null
@@ -51,6 +57,7 @@
     "number": 7,
     "firstName": "Grant",
     "lastName": "Winters",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/GrantWinters.mp3",
     "walkup": null
@@ -59,6 +66,7 @@
     "number": 8,
     "firstName": "Leonidas",
     "lastName": "Seventikidis",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/LeonidasSeventikidis.mp3",
     "walkup": null
@@ -67,6 +75,7 @@
     "number": 9,
     "firstName": "Noah",
     "lastName": "Larrain",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/NoahLarrain.mp3",
     "walkup": null
@@ -75,6 +84,7 @@
     "number": 10,
     "firstName": "Ryan",
     "lastName": "Foster",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/RyanFoster.mp3",
     "walkup": null
@@ -83,6 +93,7 @@
     "number": 11,
     "firstName": "Sullivan",
     "lastName": "Reid",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/SullivanReid.mp3",
     "walkup": null
@@ -91,6 +102,7 @@
     "number": 12,
     "firstName": "Cooper",
     "lastName": "Out",
+    "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/CooperOut.mp3",
     "walkup": null
