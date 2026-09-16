@@ -43,6 +43,9 @@ SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
 VOICE_NAME = "Baseball Voice Four"
 MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
 OUTPUT_FORMAT = "mp3_44100_128"
+# Spoken by nobody: context that stops the announcer treating the player's name
+# as the end of an utterance. Set to "" to turn the conditioning off.
+NEXT_TEXT = "And the crowd goes wild."
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
@@ -181,15 +184,23 @@ def players_from_names(names):
     return out
 
 
-def synthesize(key, voice_id, text):
+def synthesize(key, voice_id, text, seed=None, next_text=NEXT_TEXT):
     url = "%s/v1/text-to-speech/%s?%s" % (
         API, voice_id, urllib.parse.urlencode({"output_format": OUTPUT_FORMAT})
     )
-    body = json.dumps({
+    payload = {
         "text": text,
         "model_id": MODEL_ID,
         "voice_settings": VOICE_SETTINGS,
-    }).encode("utf-8")
+    }
+    # next_text is never spoken. It tells the model something follows, so the
+    # last word is not an utterance-final release — which is where the trailing
+    # hiss on names ending in a consonant comes from.
+    if next_text:
+        payload["next_text"] = next_text
+    if seed is not None:
+        payload["seed"] = seed
+    body = json.dumps(payload).encode("utf-8")
     return request(url, key, data=body, accept="audio/mpeg")
 
 
@@ -210,6 +221,11 @@ def main():
                     help="override stability for this run (auditioning only)")
     ap.add_argument("--similarity", type=float, metavar="0-1",
                     help="override similarity for this run (auditioning only)")
+    ap.add_argument("--takes", type=int, default=1, metavar="N",
+                    help="record N attempts of each line, seeded and numbered, "
+                         "so the best can be chosen and kept")
+    ap.add_argument("--no-next-text", action="store_true",
+                    help="drop the trailing context conditioning")
     ap.add_argument("--say", nargs=2, action="append", metavar=("LABEL", "TEXT"),
                     help="record arbitrary text as LABEL.mp3 — for auditioning "
                          "phrasing or pronunciation side by side")
@@ -235,11 +251,15 @@ def main():
         out_dir = os.path.expandvars(os.path.expanduser(args.out_dir))
         os.makedirs(out_dir, exist_ok=True)
         print("Voice %r -> %s (model %s)" % (args.voice, voice_id, MODEL_ID))
+        nxt = "" if args.no_next_text else NEXT_TEXT
         for label, text in args.say:
-            path = os.path.join(out_dir, label + ".mp3")
-            with open(path, "wb") as fh:
-                fh.write(synthesize(key, voice_id, text))
-            print("wrote  %-28s %s" % (label + ".mp3", text))
+            for take in range(1, args.takes + 1):
+                seed = 1000 + take
+                name = label if args.takes == 1 else "%s-take%d" % (label, take)
+                path = os.path.join(out_dir, name + ".mp3")
+                with open(path, "wb") as fh:
+                    fh.write(synthesize(key, voice_id, text, seed=seed, next_text=nxt))
+                print("wrote  %-34s seed %d  %s" % (name + ".mp3", seed, text))
         return
 
     players = players_from_names(args.names) if args.names else players_from_roster()
