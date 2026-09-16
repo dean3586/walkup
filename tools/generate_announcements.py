@@ -40,7 +40,7 @@ API = "https://api.elevenlabs.io"
 SYNC_URL = ("https://uijbrrvchglumgvleeoo.supabase.co/rest/v1/walkup_config"
             "?id=eq.default&select=data")
 SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
-VOICE_NAME = "Baseball Announcer Two"
+VOICE_NAME = "Baseball Voice Three"
 MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
 OUTPUT_FORMAT = "mp3_44100_128"
 

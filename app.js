@@ -35,7 +35,7 @@
   // credit quota, so the worst a stray copy can do is spend a few
   // announcements' worth of credit and stop.
   const ELEVEN_API_KEY = 'sk_649990941ca77dfec28a3c95e2a20d962dedd45e6c64b0cc';
-  const ELEVEN_VOICE_ID = 'SzhLxXqLBlrRykTRhsSA'; // Baseball Announcer Two
+  const ELEVEN_VOICE_ID = 'dhlnEOuE4v7Hy8nuusjU'; // Baseball Voice Three
   const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
   // Matches tools/generate_announcements.py — change both together or
   // re-recordings will not match the committed files.

@@ -8,7 +8,7 @@ re-run sounds like the existing files.
 
 | Setting | UI value | API value |
 |---|---|---|
-| Voice | Baseball Announcer Two (custom) | `SzhLxXqLBlrRykTRhsSA` |
+| Voice | Baseball Voice Three (custom) | `dhlnEOuE4v7Hy8nuusjU` |
 | Model | Multilingual v2 | `eleven_multilingual_v2` |
 | Speed | 0.9 | `speed: 0.9` |
 | Stability | 90% | `stability: 0.90` |
@@ -124,10 +124,11 @@ until the next start.
 
 This is the ElevenCreative flow API, not the plain text-to-speech tool:
 
-1. `creative_list_voices(search="Baseball Announcer")` →
-   `Baseball Announcer Two` is `SzhLxXqLBlrRykTRhsSA`.
+1. `creative_list_voices(search="Baseball")` →
+   `Baseball Voice Three` is `dhlnEOuE4v7Hy8nuusjU`. Earlier takes used
+   `Baseball Announcer Two` (`SzhLxXqLBlrRykTRhsSA`).
 2. `creative_generate_speech(prompt="Now batting, Nolan Pitton",
-   model_id="eleven_multilingual_v2", voice_id="SzhLxXqLBlrRykTRhsSA",
+   model_id="eleven_multilingual_v2", voice_id="dhlnEOuE4v7Hy8nuusjU",
    generations_count=1, flow_id=<one flow for the batch>)`. Pass
    `estimate_only=true` first to price it — about 25 credits ($0.0025) per name.
    `generations_count` defaults to 4, so set it to 1 or pay four times over.
