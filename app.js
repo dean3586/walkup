@@ -42,7 +42,7 @@
   const ELEVEN_VOICE_SETTINGS = {
     stability: 0.9,
     similarity_boost: 1.0,
-    style: 0.45,
+    style: 0.15,
     speed: 0.9,
     use_speaker_boost: true,
   };

@@ -48,7 +48,7 @@ OUTPUT_FORMAT = "mp3_44100_128"
 VOICE_SETTINGS = {
     "stability": 0.90,          # UI: Stability 90%
     "similarity_boost": 1.0,    # UI: Similarity 100%
-    "style": 0.45,              # UI: Style Exaggeration 45%
+    "style": 0.15,              # UI: Style Exaggeration 15%
     "speed": 0.9,               # UI: Speed 0.9
     "use_speaker_boost": True,
 }

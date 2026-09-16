@@ -13,11 +13,13 @@ re-run sounds like the existing files.
 | Speed | 0.9 | `speed: 0.9` |
 | Stability | 90% | `stability: 0.90` |
 | Similarity | 100% | `similarity_boost: 1.0` |
-| Style Exaggeration | 45% | `style: 0.45` |
+| Style Exaggeration | 15% | `style: 0.15` |
 | Speaker boost | on | `use_speaker_boost: true` |
 | Output | — | `mp3_44100_128` |
 
 Style exaggeration and speed need a v2 model; `eleven_v3` ignores them.
+Style is kept low on purpose: the voice already builds its own crescendo, and
+pushing exaggeration on top of that destabilises the read.
 
 ## Script text
 
