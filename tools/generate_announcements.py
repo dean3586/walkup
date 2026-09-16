@@ -206,6 +206,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the lines, call nothing")
     ap.add_argument("--out-dir", default=OUT_DIR,
                     help="where to write the MP3s (default: audio/announcements)")
+    ap.add_argument("--say", nargs=2, action="append", metavar=("LABEL", "TEXT"),
+                    help="record arbitrary text as LABEL.mp3 — for auditioning "
+                         "phrasing or pronunciation side by side")
     ap.add_argument("--history", nargs="?", type=int, const=15, metavar="N",
                     help="list the last N generations with the voice used, then exit")
     ap.add_argument("--from-cloud", action="store_true",
@@ -215,6 +218,19 @@ def main():
 
     if args.history:
         show_history(load_key(args.key_file), args.history)
+        return
+
+    if args.say:
+        key = load_key(args.key_file)
+        voice_id = resolve_voice_id(key, args.voice)
+        out_dir = os.path.expandvars(os.path.expanduser(args.out_dir))
+        os.makedirs(out_dir, exist_ok=True)
+        print("Voice %r -> %s (model %s)" % (args.voice, voice_id, MODEL_ID))
+        for label, text in args.say:
+            path = os.path.join(out_dir, label + ".mp3")
+            with open(path, "wb") as fh:
+                fh.write(synthesize(key, voice_id, text))
+            print("wrote  %-28s %s" % (label + ".mp3", text))
         return
 
     players = players_from_names(args.names) if args.names else players_from_roster()
