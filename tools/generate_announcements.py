@@ -46,8 +46,8 @@ OUTPUT_FORMAT = "mp3_44100_128"
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
-    "stability": 0.90,          # UI: Stability 90%
-    "similarity_boost": 1.0,    # UI: Similarity 100%
+    "stability": 0.95,          # UI: Stability 95%
+    "similarity_boost": 0.95,   # UI: Similarity 95%
     "style": 0.15,              # UI: Style Exaggeration 15%
     "speed": 0.9,               # UI: Speed 0.9
     "use_speaker_boost": True,

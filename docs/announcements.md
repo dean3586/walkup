@@ -11,8 +11,8 @@ re-run sounds like the existing files.
 | Voice | Baseball Voice Three (custom) | `dhlnEOuE4v7Hy8nuusjU` |
 | Model | Multilingual v2 | `eleven_multilingual_v2` |
 | Speed | 0.9 | `speed: 0.9` |
-| Stability | 90% | `stability: 0.90` |
-| Similarity | 100% | `similarity_boost: 1.0` |
+| Stability | 95% | `stability: 0.95` |
+| Similarity | 95% | `similarity_boost: 0.95` |
 | Style Exaggeration | 15% | `style: 0.15` |
 | Speaker boost | on | `use_speaker_boost: true` |
 | Output | — | `mp3_44100_128` |
