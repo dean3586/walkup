@@ -26,15 +26,24 @@
   const END_FADE_MS = 2000;   // fade-out length at the end of the walk-up song
   const END_FADE_LEAD = 2;    // seconds before the end to begin the fade-out
 
+  // === Re-recording announcements ===
+  // Goes through a small endpoint that holds the ElevenLabs key, checks the
+  // passcode, and commits the MP3 to the repo so every device gets it. Nothing
+  // secret lives in this file. Source: tools/regen-api.
+  const REGEN_ENDPOINT = 'https://walkup-regen.vercel.app/api/regenerate';
+
+  // Gate for editing the shared settings. Embedded on purpose: it stops someone
+  // at the game changing what everyone hears, and the endpoint checks it too.
+  const REGEN_PASSCODE = '2026';
+
+  // Whether re-records name the jersey number. Set in Settings, synced with
+  // everything else. It changes the next recording, not the files already made.
+  let announceWithNumbers = false;
+
   // === Cloud sync (shared team config) ===
   // One shared row in Supabase keeps selections + settings in sync across
   // devices. The publishable key is public by design; RLS limits anon access
   // to this single table only.
-  // Re-recording goes through a small endpoint that holds the ElevenLabs key,
-  // checks the passcode, and commits the MP3 to the repo so every device gets
-  // it. Nothing secret lives in this file. Source: tools/regen-api.
-  const REGEN_ENDPOINT = 'https://walkup-regen.vercel.app/api/regenerate';
-
   const SUPABASE_URL = 'https://uijbrrvchglumgvleeoo.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL';
   const CONFIG_ROW = 'default';
