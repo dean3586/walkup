@@ -1735,6 +1735,30 @@ main {
   font-family: inherit;
 }
 
+.regen-voice-field {
+  display: none; /* revealed by the passcode, like .regen-btn */
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.regen-unlocked .regen-voice-field {
+  display: flex;
+}
+
+#regen-voice {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
 .regen-btn {
   display: none; /* revealed by the passcode; see .regen-unlocked below */
   flex-shrink: 0;

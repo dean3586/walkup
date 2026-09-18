@@ -1416,6 +1416,12 @@
     return localStorage.getItem('walkup-regen-passcode') || '';
   }
 
+  // Which voice the next re-record uses. Kept per device: it is a choice made
+  // while auditioning takes, not a setting the team shares.
+  function regenVoice() {
+    return localStorage.getItem('walkup-regen-voice') || 'four';
+  }
+
   function regenUnlocked() {
     return regenPasscode() === REGEN_PASSCODE;
   }
@@ -1464,6 +1470,7 @@
           pronunciation: player.pronunciation || '',
           jersey: jerseyOf(player),
           withNumbers: announceWithNumbers,
+          voice: regenVoice(),
         }),
       });
 
@@ -1790,6 +1797,14 @@
       passcodeInput.addEventListener('input', () => {
         localStorage.setItem('walkup-regen-passcode', passcodeInput.value.trim());
         applyRegenLock();
+      });
+    }
+
+    const voiceSelect = document.getElementById('regen-voice');
+    if (voiceSelect) {
+      voiceSelect.value = regenVoice();
+      voiceSelect.addEventListener('change', () => {
+        localStorage.setItem('walkup-regen-voice', voiceSelect.value);
       });
     }
 

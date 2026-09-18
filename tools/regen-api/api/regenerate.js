@@ -8,7 +8,13 @@
 //      GITHUB_TOKEN + GITHUB_REPO (optional — commits the result when set).
 
 const MODEL_ID = 'eleven_multilingual_v2';
-const VOICE_ID = process.env.ELEVEN_VOICE_ID || 'ymICdMZoQRE2xrJTPSjR'; // Baseball Voice Four
+// The app offers these by key. Anything else falls back to the default, so a
+// request cannot name an arbitrary voice.
+const VOICES = {
+  four: 'ymICdMZoQRE2xrJTPSjR',  // Baseball Voice Four
+  three: 'dhlnEOuE4v7Hy8nuusjU', // Baseball Voice Three
+};
+const DEFAULT_VOICE_ID = process.env.ELEVEN_VOICE_ID || VOICES.four;
 
 // Same dial positions as tools/generate_announcements.py. Change one, change
 // the other, or a re-record stops matching the committed files.
@@ -88,7 +94,8 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { passcode, firstName, lastName, pronunciation, jersey, withNumbers } = body;
+  const { passcode, firstName, lastName, pronunciation, jersey, withNumbers, voice } = body;
+  const voiceId = Object.hasOwn(VOICES, voice) ? VOICES[voice] : DEFAULT_VOICE_ID;
 
   if (!process.env.REGEN_PASSCODE || passcode !== process.env.REGEN_PASSCODE) {
     await sleep(1500); // slow down guessing
@@ -104,7 +111,7 @@ export default async function handler(req, res) {
   const text = phrase({ firstName, lastName, pronunciation, jersey, withNumbers });
 
   const tts = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_128`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
     {
       method: 'POST',
       headers: {
@@ -127,7 +134,7 @@ export default async function handler(req, res) {
   const commit = await commitToGitHub(
     `audio/announcements/${file}`,
     base64,
-    `Re-record ${firstName} ${lastName}'s announcement\n\nSpoken as: ${text}`
+    `Re-record ${firstName} ${lastName}'s announcement\n\nSpoken as: ${text}\nVoice: ${voiceId}`
   );
 
   return res.status(200).json({ file, text, audio: base64, ...commit });
