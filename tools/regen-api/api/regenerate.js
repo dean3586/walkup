@@ -101,6 +101,9 @@ export default async function handler(req, res) {
     await sleep(1500); // slow down guessing
     return res.status(401).json({ error: 'Wrong passcode' });
   }
+  // The app unlocks Settings by asking here, so the passcode never ships in
+  // app.js. Answering costs no credits.
+  if (body.check) return res.status(200).json({ ok: true });
   if (!firstName || !lastName) {
     return res.status(400).json({ error: 'firstName and lastName are required' });
   }

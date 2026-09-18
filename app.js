@@ -32,9 +32,10 @@
   // secret lives in this file. Source: tools/regen-api.
   const REGEN_ENDPOINT = 'https://walkup-regen.vercel.app/api/regenerate';
 
-  // Gate for editing the shared settings. Embedded on purpose: it stops someone
-  // at the game changing what everyone hears, and the endpoint checks it too.
-  const REGEN_PASSCODE = '2026';
+  // Gate for editing the shared settings. The 6-digit passcode lives only in
+  // the endpoint's environment; the app asks the endpoint whether a typed code
+  // is right and remembers the answer on this device.
+  const PASSCODE_LENGTH = 6;
 
   // Whether re-records name the jersey number. Set in Settings, synced with
   // everything else. It changes the next recording, not the files already made.
@@ -1423,7 +1424,28 @@
   }
 
   function regenUnlocked() {
-    return regenPasscode() === REGEN_PASSCODE;
+    const code = regenPasscode();
+    return code !== '' && localStorage.getItem('walkup-regen-verified') === code;
+  }
+
+  // Asks the endpoint whether the typed code is right. Costs no credits.
+  async function verifyPasscode(code) {
+    localStorage.removeItem('walkup-regen-verified');
+    if (code.length !== PASSCODE_LENGTH) return false;
+    try {
+      const res = await fetch(REGEN_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: code, check: true }),
+      });
+      if (!res.ok) return false;
+      // Typing may have moved on while the answer was in flight.
+      if (regenPasscode() !== code) return false;
+      localStorage.setItem('walkup-regen-verified', code);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function applyRegenLock() {
@@ -1432,7 +1454,7 @@
     if (hint) {
       hint.textContent = unlocked
         ? 'Unlocked — changes here reach every device.'
-        : 'Locked. These settings are shared by the whole team; enter the passcode to change them.';
+        : `Locked. These settings are shared by the whole team; enter the ${PASSCODE_LENGTH}-digit passcode to change them.`;
       hint.classList.toggle('unlocked', unlocked);
     }
     document.body.classList.toggle('regen-unlocked', unlocked);
@@ -1795,8 +1817,11 @@
       passcodeInput.value = regenPasscode();
       applyRegenLock();
       passcodeInput.addEventListener('input', () => {
-        localStorage.setItem('walkup-regen-passcode', passcodeInput.value.trim());
+        const code = passcodeInput.value.trim();
+        localStorage.setItem('walkup-regen-passcode', code);
+        localStorage.removeItem('walkup-regen-verified');
         applyRegenLock();
+        verifyPasscode(code).then(applyRegenLock);
       });
     }
 
