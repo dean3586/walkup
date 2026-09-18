@@ -178,6 +178,38 @@
     }
   }
 
+  // Numbers are reused when someone leaves and a new player takes the slot, so
+  // anything this device kept for a number no longer on the roster is dropped
+  // at startup: settings maps in localStorage, uploaded songs and re-recorded
+  // announcements in IndexedDB. Otherwise the new player inherits them.
+  async function pruneRemovedPlayers() {
+    const onRoster = new Set(roster.map(p => String(p.number)));
+    ['walkup-deezer-info', 'walkup-start-times', 'walkup-pronunciations', 'walkup-jerseys']
+      .forEach(key => {
+        try {
+          const map = JSON.parse(localStorage.getItem(key) || 'null');
+          if (!map || typeof map !== 'object') return;
+          const stale = Object.keys(map).filter(n => !onRoster.has(n));
+          if (!stale.length) return;
+          stale.forEach(n => delete map[n]);
+          localStorage.setItem(key, JSON.stringify(map));
+        } catch (e) {}
+      });
+
+    try {
+      const db = await openDB();
+      const keys = await new Promise((resolve, reject) => {
+        const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAllKeys();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      for (const key of keys) {
+        const num = String(key).replace(/^ann-/, '');
+        if (!onRoster.has(num)) await removeAudioFile(key).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
   async function removeAudioFile(playerNumber) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -787,6 +819,7 @@
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
 
+    await pruneRemovedPlayers();
     hydrateBakedSongs();
     await loadUploadedAudio();
     loadDeezerInfo();
