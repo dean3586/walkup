@@ -19,10 +19,10 @@ const DEFAULT_VOICE_ID = process.env.ELEVEN_VOICE_ID || VOICES.four;
 // Same dial positions as tools/generate_announcements.py. Change one, change
 // the other, or a re-record stops matching the committed files.
 const VOICE_SETTINGS = {
-  stability: 0.5,
+  stability: 0.75,
   similarity_boost: 0.8,
-  style: 0.15,
-  speed: 0.9,
+  style: 0, // above 0 adds a trailing "s" to most takes
+  speed: 1.0,
   use_speaker_boost: true,
 };
 

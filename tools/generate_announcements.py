@@ -49,10 +49,10 @@ NEXT_TEXT = ""
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
-    "stability": 0.50,          # UI: Stability 50%
+    "stability": 0.75,          # UI: Stability 75%
     "similarity_boost": 0.80,   # UI: Similarity 80%
-    "style": 0.15,              # UI: Style Exaggeration 15%
-    "speed": 0.9,               # UI: Speed 0.9
+    "style": 0.0,               # UI: Style Exaggeration 0% (above 0 adds a trailing "s")
+    "speed": 1.0,               # UI: Speed 1.0
     "use_speaker_boost": True,
 }
 
