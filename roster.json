@@ -72,15 +72,6 @@
     "walkup": null
   },
   {
-    "number": 9,
-    "firstName": "Noah",
-    "lastName": "Larrain",
-    "jersey": null,
-    "pronunciation": null,
-    "announcement": "audio/announcements/NoahLarrain.mp3",
-    "walkup": null
-  },
-  {
     "number": 10,
     "firstName": "Ryan",
     "lastName": "Foster",
@@ -105,6 +96,15 @@
     "jersey": null,
     "pronunciation": null,
     "announcement": "audio/announcements/CooperOut.mp3",
+    "walkup": null
+  },
+  {
+    "number": 13,
+    "firstName": "Carlos",
+    "lastName": "Chirinos",
+    "jersey": null,
+    "pronunciation": null,
+    "announcement": "audio/announcements/CarlosChirinos.mp3",
     "walkup": null
   }
 ]
