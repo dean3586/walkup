@@ -45,7 +45,7 @@ MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
 OUTPUT_FORMAT = "mp3_44100_128"
 # Spoken by nobody: context that stops the announcer treating the player's name
 # as the end of an utterance. Set to "" to turn the conditioning off.
-NEXT_TEXT = "And the crowd goes wild."
+NEXT_TEXT = ""
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
