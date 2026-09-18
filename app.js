@@ -1334,30 +1334,23 @@
         saveStartTimes();
       }
 
-      // Mouse drag
-      canvas.addEventListener('mousedown', (e) => {
-        if (!regenUnlocked()) return;
+      // Mouse drag. Pointer events, not mousedown, so the mouse event a phone
+      // fires after a tap cannot set the start time.
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse' || !regenUnlocked()) return;
         e.preventDefault();
         setStartFromEvent(e, e.clientX);
         function onMove(ev) { setStartFromEvent(ev, ev.clientX); }
         function onUp() {
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
         }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
       });
 
-      // Touch drag
-      canvas.addEventListener('touchstart', (e) => {
-        if (!regenUnlocked()) return;
-        e.preventDefault();
-        setStartFromEvent(e, e.touches[0].clientX);
-      }, { passive: false });
-      canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        setStartFromEvent(e, e.touches[0].clientX);
-      }, { passive: false });
+      // No touch dragging: on a phone, scrolling Settings with a finger that
+      // landed on a waveform kept moving start times. Use the -/+ buttons there.
     });
   }
 
