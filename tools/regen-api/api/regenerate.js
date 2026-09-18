@@ -7,7 +7,7 @@
 // Env: ELEVENLABS_API_KEY, REGEN_PASSCODE, ELEVEN_VOICE_ID (optional),
 //      GITHUB_TOKEN + GITHUB_REPO (optional — commits the result when set).
 
-const MODEL_ID = 'eleven_multilingual_v2';
+const MODEL_ID = 'eleven_v3';
 // The app offers these by key. Anything else falls back to the default, so a
 // request cannot name an arbitrary voice.
 const VOICES = {
@@ -19,7 +19,7 @@ const DEFAULT_VOICE_ID = process.env.ELEVEN_VOICE_ID || VOICES.four;
 // Same dial positions as tools/generate_announcements.py. Change one, change
 // the other, or a re-record stops matching the committed files.
 const VOICE_SETTINGS = {
-  stability: 0.75,
+  stability: 0.5, // v3 accepts only 0.0, 0.5 or 1.0
   similarity_boost: 0.8,
   style: 0, // above 0 adds a trailing "s" to most takes
   speed: 1.0,
@@ -44,9 +44,9 @@ function phrase({ firstName, lastName, pronunciation, jersey, withNumbers }) {
   // final consonant with a flourish that came out as a hiss on names ending
   // in n. The ellipses stay — they are the pauses that build the crescendo.
   if (withNumbers && jersey != null && jersey !== '') {
-    return `Now batting ... number ${jersey} ... ${name}.`;
+    return `Now batting ... number ${jersey} ... ${name}. [pause]`;
   }
-  return `Now batting ... ${name}.`;
+  return `Now batting ... ${name}. [pause]`;
 }
 
 async function commitToGitHub(path, base64, message) {

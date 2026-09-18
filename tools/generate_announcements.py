@@ -41,7 +41,7 @@ SYNC_URL = ("https://uijbrrvchglumgvleeoo.supabase.co/rest/v1/walkup_config"
             "?id=eq.default&select=data")
 SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
 VOICE_NAME = "Baseball Voice Four"
-MODEL_ID = "eleven_multilingual_v2"  # supports style exaggeration and speed
+MODEL_ID = "eleven_v3"  # reads [audio tags]; stability must be 0.0, 0.5 or 1.0
 OUTPUT_FORMAT = "mp3_44100_128"
 # Spoken by nobody: context that stops the announcer treating the player's name
 # as the end of an utterance. Set to "" to turn the conditioning off.
@@ -49,7 +49,7 @@ NEXT_TEXT = ""
 
 # The dial positions from the ElevenLabs UI, as API values.
 VOICE_SETTINGS = {
-    "stability": 0.75,          # UI: Stability 75%
+    "stability": 0.5,           # UI: Natural
     "similarity_boost": 0.80,   # UI: Similarity 80%
     "style": 0.0,               # UI: Style Exaggeration 0% (above 0 adds a trailing "s")
     "speed": 1.0,               # UI: Speed 1.0
@@ -120,8 +120,8 @@ def phrase(first, last, number, with_numbers, spoken=None):
     if with_numbers:
         if number is None:
             sys.exit("--numbers needs a jersey number for %s %s" % (first, last))
-        return "Now batting ... number %s ... %s." % (number, name)
-    return "Now batting ... %s." % name
+        return "Now batting ... number %s ... %s. [pause]" % (number, name)
+    return "Now batting ... %s. [pause]" % name
 
 
 def show_history(key, limit):

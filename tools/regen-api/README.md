@@ -46,8 +46,8 @@ unless the `Origin` header is the app's, and a wrong passcode costs the caller a
 
 ## Voice settings
 
-Identical to `tools/generate_announcements.py`: `eleven_multilingual_v2`,
-stability 0.75, similarity 0.8, style 0, speed 1.0, speaker boost on. Change
+Identical to `tools/generate_announcements.py`: `eleven_v3`,
+stability 0.5, similarity 0.8, style 0, speed 1.0, speaker boost on. Change
 one and change the other, or re-recordings will not match the committed files.
 
 ## Testing it locally
