@@ -37,9 +37,9 @@ import urllib.request
 API = "https://api.elevenlabs.io"
 # The app syncs its settings, pronunciations included, to this Supabase row.
 # Same URL and publishable key the app ships in app.js.
-SYNC_URL = ("https://uijbrrvchglumgvleeoo.supabase.co/rest/v1/walkup_config"
+SYNC_URL = ("https://ephqcqgnethvlmnrkhgy.supabase.co/rest/v1/walkup_config"
             "?id=eq.default&select=data")
-SYNC_KEY = "sb_publishable_Pq7c9QAC8ylL4toRZwrrSw_9Uu2MArL"
+SYNC_KEY = "sb_publishable_DtHJV5KBSSRul-QXYBprmg_O3QwY0pG"
 VOICE_NAME = "Baseball Voice Four"
 MODEL_ID = "eleven_v3"  # reads [audio tags]; stability must be 0.0, 0.5 or 1.0
 OUTPUT_FORMAT = "mp3_44100_128"
