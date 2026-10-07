@@ -17,12 +17,15 @@
   let playbackStartTime = 0;
   let pausedAt = 0;
   let totalPausedMs = 0;
+  let announcementTimer = null; // pending announcement start (see ANNOUNCE_DELAY)
+  let cancelMusicWait = null;   // stops waiting for the song to start, if waiting
   let wakeLock = null;
 
   // === Audio mix tuning ===
   const DUCK_VOLUME = 0.4;    // music volume while the announcer is talking
   const FULL_VOLUME = 1;      // music volume after the announcement finishes
   const RAMP_UP_MS = 1000;    // fade from ducked -> full once the announcement ends
+  const ANNOUNCE_DELAY = 0.5; // seconds the music plays before the announcer starts
   const END_FADE_MS = 2000;   // fade-out length at the end of the walk-up song
   const END_FADE_LEAD = 2;    // seconds before the end to begin the fade-out
 
@@ -1801,7 +1804,66 @@
       ? announcementAudio.duration : 3;
     if (!currentPlayer.walkup) return annDur;
     const walkupDur = getEffectiveWalkupDuration(currentPlayer);
-    return Math.max(annDur, walkupDur);
+    return Math.max(announceDelayFor(currentPlayer) + annDur, walkupDur);
+  }
+
+  // The announcer waits for the music only when there is music.
+  function announceDelayFor(player) {
+    return player && player.walkup ? ANNOUNCE_DELAY : 0;
+  }
+
+  function playbackElapsed() {
+    const now = isPaused ? pausedAt : Date.now();
+    return (now - playbackStartTime - totalPausedMs) / 1000;
+  }
+
+  // The song takes a moment to buffer, so the lead-in is counted from when it
+  // is actually audible: the playback clock is re-aligned to the song's
+  // position once it starts. If it has not started after MUSIC_WAIT_MS, the
+  // announcer goes ahead without it.
+  const MUSIC_WAIT_MS = 1500;
+  function announceWhenMusicStarts(player) {
+    stopWaitingForMusic();
+    const startTime = player.walkup.startTime || 0;
+    const begin = (musicPlaying) => {
+      stopWaitingForMusic();
+      if (currentPlayer !== player || playbackPhase !== 'announcement' || isPaused) return;
+      const musicPos = musicPlaying ? Math.max(0, walkupAudio.currentTime - startTime) : ANNOUNCE_DELAY;
+      playbackStartTime = Date.now() - musicPos * 1000 - totalPausedMs;
+      playAnnouncementOnSchedule();
+    };
+    const onPlaying = () => begin(true);
+    const fallback = setTimeout(() => begin(false), MUSIC_WAIT_MS);
+    walkupAudio.addEventListener('playing', onPlaying);
+    cancelMusicWait = () => {
+      clearTimeout(fallback);
+      walkupAudio.removeEventListener('playing', onPlaying);
+    };
+  }
+
+  function stopWaitingForMusic() {
+    if (cancelMusicWait) {
+      cancelMusicWait();
+      cancelMusicWait = null;
+    }
+  }
+
+  // Starts or resumes the announcement at the point the playback clock says
+  // it should be at: after ANNOUNCE_DELAY if the music has only just begun.
+  function playAnnouncementOnSchedule() {
+    clearTimeout(announcementTimer);
+    announcementTimer = null;
+    const pos = playbackElapsed() - announceDelayFor(currentPlayer);
+    if (pos < 0) {
+      announcementAudio.currentTime = 0;
+      announcementTimer = setTimeout(() => {
+        announcementTimer = null;
+        if (playbackPhase === 'announcement' && !isPaused) announcementAudio.play().catch(() => {});
+      }, -pos * 1000);
+    } else {
+      announcementAudio.currentTime = pos;
+      announcementAudio.play().catch(() => {});
+    }
   }
 
   function setupControls() {
@@ -1820,17 +1882,20 @@
       }
 
       if (isPaused) {
+        totalPausedMs += Date.now() - pausedAt;
+        isPaused = false;
         if (playbackPhase === 'announcement') {
-          announcementAudio.play().catch(() => {});
+          playAnnouncementOnSchedule();
           if (currentPlayer && currentPlayer.walkup) walkupAudio.play().catch(() => {});
         } else {
           walkupAudio.play().catch(() => {});
         }
-        totalPausedMs += Date.now() - pausedAt;
-        isPaused = false;
         acquireWakeLock();
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       } else {
+        stopWaitingForMusic();
+        clearTimeout(announcementTimer);
+        announcementTimer = null;
         announcementAudio.pause();
         walkupAudio.pause();
         pausedAt = Date.now();
@@ -2123,7 +2188,17 @@
     announcementAudio.src = player.announcement;
     announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
-    announcementAudio.play().catch(() => {});
+    if (player.walkup) {
+      // The announcer starts later, outside this tap. Calling play() during
+      // the tap is what lets iOS play it then; muted so nothing is heard.
+      announcementAudio.muted = true;
+      announcementAudio.play().catch(() => {});
+      announcementAudio.pause();
+      announcementAudio.muted = false;
+      announceWhenMusicStarts(player);
+    } else {
+      playAnnouncementOnSchedule();
+    }
 
     if (player.walkup) {
       const startTime = player.walkup.startTime || 0;
@@ -2222,6 +2297,7 @@
 
     const annDur = (announcementAudio.duration && isFinite(announcementAudio.duration))
       ? announcementAudio.duration : 3;
+    const annEnd = announceDelayFor(currentPlayer) + annDur;
     const startTime = currentPlayer.walkup ? (currentPlayer.walkup.startTime || 0) : 0;
     const total = getTotalDuration();
     seconds = Math.max(0, Math.min(total, seconds));
@@ -2232,12 +2308,25 @@
       walkupFadeTimeout = null;
     }
     clearInterval(fadeInterval);
+    stopWaitingForMusic();
 
-    if (seconds < annDur) {
-      // In announcement phase
+    // Reset timer baseline
+    playbackStartTime = Date.now() - (seconds * 1000);
+    totalPausedMs = 0;
+    if (isPaused) {
+      pausedAt = Date.now();
+    }
+
+    if (seconds < annEnd) {
+      // In announcement phase (including the lead-in before the announcer)
       playbackPhase = 'announcement';
-      announcementAudio.currentTime = seconds;
-      if (!isPaused) announcementAudio.play().catch(() => {});
+      if (isPaused) {
+        clearTimeout(announcementTimer);
+        announcementTimer = null;
+        announcementAudio.currentTime = Math.max(0, seconds - announceDelayFor(currentPlayer));
+      } else {
+        playAnnouncementOnSchedule();
+      }
 
       if (currentPlayer.walkup) {
         walkupAudio.currentTime = startTime + seconds;
@@ -2247,6 +2336,8 @@
     } else {
       // Past announcement → walkup phase
       playbackPhase = 'walkup';
+      clearTimeout(announcementTimer);
+      announcementTimer = null;
       announcementAudio.pause();
 
       if (currentPlayer.walkup) {
@@ -2260,12 +2351,6 @@
       }
     }
 
-    // Reset timer baseline
-    playbackStartTime = Date.now() - (seconds * 1000);
-    totalPausedMs = 0;
-    if (isPaused) {
-      pausedAt = Date.now();
-    }
     updatePlayPauseIcon();
   }
 
@@ -2290,6 +2375,9 @@
   }
 
   function silenceAll() {
+    stopWaitingForMusic();
+    clearTimeout(announcementTimer);
+    announcementTimer = null;
     announcementAudio.pause();
     announcementAudio.currentTime = 0;
     walkupAudio.pause();
