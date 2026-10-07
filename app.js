@@ -45,8 +45,8 @@
   // One shared row in Supabase keeps selections + settings in sync across
   // devices. The publishable key is public by design; RLS limits anon access
   // to this single table only.
-  const SUPABASE_URL = 'https://ephqcqgnethvlmnrkhgy.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_DtHJV5KBSSRul-QXYBprmg_O3QwY0pG';
+  const SUPABASE_URL = 'https://mvozngwagbfcthshisku.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_EqzVx3rN87OlI--zyecPSA_pyZMYieM';
   const CONFIG_ROW = 'default';
   const SYNC_ENDPOINT = `${SUPABASE_URL}/rest/v1/walkup_config`;
   let syncTimer = null;
