@@ -511,6 +511,18 @@
     });
   }
 
+  // Preview URLs carry their expiry (hdnea=exp=<unix seconds>), about 15
+  // minutes after they were resolved. Returns ms since epoch, or null.
+  function deezerUrlExpiry(url) {
+    const m = /exp=(\d+)/.exec(url || '');
+    return m ? Number(m[1]) * 1000 : null;
+  }
+
+  function deezerUrlExpiresWithin(url, ms) {
+    const exp = deezerUrlExpiry(url);
+    return exp !== null && exp - Date.now() < ms;
+  }
+
   async function refreshDeezerUrls() {
     const tasks = roster
       .filter(p => p._isDeezer && p._deezerTrack && p._deezerTrack.id)
@@ -529,6 +541,58 @@
     await Promise.all(tasks);
     saveDeezerInfo();
   }
+
+  // Keeps preview URLs valid while the app stays open through a game.
+  // Runs only when some URL is close to expiring, and keeps the new URLs on
+  // this device instead of syncing them (they are useless to other devices
+  // once they expire).
+  const URL_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+  async function refreshExpiringDeezerUrls() {
+    const due = roster.filter(p => p._isDeezer && p.walkup && p._deezerTrack && p._deezerTrack.id
+      && deezerUrlExpiresWithin(p.walkup.file, URL_REFRESH_MARGIN_MS));
+    await Promise.all(due.map(async (p) => {
+      const fresh = await resolveDeezerTrack(p._deezerTrack.id);
+      if (!fresh) return;
+      if (isExplicitTrack(fresh)) {
+        await deleteUploadedAudio(p);
+        return;
+      }
+      p.walkup.file = fresh.preview;
+    }));
+    if (due.length) localStorage.setItem('walkup-deezer-info', JSON.stringify(buildDeezerInfo()));
+  }
+  setInterval(() => {
+    if (document.visibilityState === 'visible') refreshExpiringDeezerUrls().catch(() => {});
+  }, 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshExpiringDeezerUrls().catch(() => {});
+  });
+
+  // Swaps a fresh preview URL into the song that is playing right now, at the
+  // point it would have reached. Used when the stored URL is expired at play
+  // time, or when the song fails to load.
+  async function reloadWalkupSource(player) {
+    if (!player._isDeezer || !player._deezerTrack || !player._deezerTrack.id) return;
+    const fresh = await resolveDeezerTrack(player._deezerTrack.id);
+    if (!fresh || isExplicitTrack(fresh)) return;
+    player.walkup.file = fresh.preview;
+    if (currentPlayer !== player || !playbackPhase) return;
+
+    const pausedMs = isPaused ? Date.now() - pausedAt : 0;
+    const elapsed = Math.max(0, (Date.now() - playbackStartTime - totalPausedMs - pausedMs) / 1000);
+    walkupAudio.src = player.walkup.file;
+    walkupAudio.currentTime = (player.walkup.startTime || 0) + elapsed;
+    walkupAudio.volume = playbackPhase === 'walkup' ? FULL_VOLUME : DUCK_VOLUME;
+    if (!isPaused) walkupAudio.play().catch(() => {});
+    if (playbackPhase === 'walkup') scheduleWalkupFadeOut(player);
+  }
+
+  let walkupRetriedFor = null; // the playPlayer() call that already retried
+  walkupAudio.addEventListener('error', () => {
+    if (!currentPlayer || !playbackPhase || walkupRetriedFor === playbackStartTime) return;
+    walkupRetriedFor = playbackStartTime;
+    reloadWalkupSource(currentPlayer).catch(() => {});
+  });
 
   // Songs baked into roster.json (committed to the repo) carry their own
   // title/artist/art so they display without per-device localStorage.
@@ -2067,6 +2131,12 @@
       walkupAudio.volume = DUCK_VOLUME;
       walkupAudio.currentTime = startTime;
       walkupAudio.play().catch(() => {});
+      // An expired URL would fail; fetch a fresh one and pick the song up
+      // where it should be. The announcement covers the short wait.
+      if (player._isDeezer && deezerUrlExpiresWithin(player.walkup.file, 20 * 1000)) {
+        walkupRetriedFor = playbackStartTime;
+        reloadWalkupSource(player).catch(() => {});
+      }
     }
 
     acquireWakeLock();
