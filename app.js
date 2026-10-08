@@ -52,7 +52,10 @@
   const SUPABASE_KEY = 'sb_publishable_EqzVx3rN87OlI--zyecPSA_pyZMYieM';
   const CONFIG_ROW = 'default';
   const SYNC_ENDPOINT = `${SUPABASE_URL}/rest/v1/walkup_config`;
-  let syncTimer = null;
+  let syncTimer = null;      // debounce for local edits
+  let syncRunning = null;    // the sync in progress, if any
+  let syncAgain = false;     // another sync was asked for while one was running
+  let syncRetryTimer = null;
   let applyingRemote = false; // guard so applying a pull doesn't echo a push
 
   // === Drag (lineup reorder) state ===
@@ -526,43 +529,39 @@
     return exp !== null && exp - Date.now() < ms;
   }
 
+  // Resolves a fresh preview URL for a player's current pick. The pick can
+  // change while the lookup is out (a new song chosen, or a sync applied); the
+  // answer is then for the old song and is dropped, so the new pick never
+  // plays the old song's audio. New URLs stay in memory: they are not synced
+  // or saved, since they expire within 15 minutes and are resolved again on
+  // every launch.
+  async function refreshPreviewFor(p) {
+    const id = p._deezerTrack.id;
+    const fresh = await resolveDeezerTrack(id);
+    if (!fresh || !p._isDeezer || !p._deezerTrack || p._deezerTrack.id !== id) return null;
+    if (isExplicitTrack(fresh)) {
+      // Song is flagged explicit now, so it stops being playable here.
+      await deleteUploadedAudio(p);
+      return null;
+    }
+    if (!p.walkup) p.walkup = { startTime: 0 };
+    p.walkup.file = fresh.preview;
+    return fresh;
+  }
+
   async function refreshDeezerUrls() {
-    const tasks = roster
+    await Promise.all(roster
       .filter(p => p._isDeezer && p._deezerTrack && p._deezerTrack.id)
-      .map(async (p) => {
-        const fresh = await resolveDeezerTrack(p._deezerTrack.id);
-        if (!fresh) return;
-        if (isExplicitTrack(fresh)) {
-          // Song is flagged explicit now, so it stops being playable here.
-          await deleteUploadedAudio(p);
-          return;
-        }
-        if (!p.walkup) p.walkup = { startTime: 0 };
-        p.walkup.file = fresh.preview;
-      });
-    if (tasks.length === 0) return;
-    await Promise.all(tasks);
-    saveDeezerInfo();
+      .map(refreshPreviewFor));
   }
 
   // Keeps preview URLs valid while the app stays open through a game.
-  // Runs only when some URL is close to expiring, and keeps the new URLs on
-  // this device instead of syncing them (they are useless to other devices
-  // once they expire).
+  // Runs only when some URL is close to expiring.
   const URL_REFRESH_MARGIN_MS = 5 * 60 * 1000;
   async function refreshExpiringDeezerUrls() {
     const due = roster.filter(p => p._isDeezer && p.walkup && p._deezerTrack && p._deezerTrack.id
       && deezerUrlExpiresWithin(p.walkup.file, URL_REFRESH_MARGIN_MS));
-    await Promise.all(due.map(async (p) => {
-      const fresh = await resolveDeezerTrack(p._deezerTrack.id);
-      if (!fresh) return;
-      if (isExplicitTrack(fresh)) {
-        await deleteUploadedAudio(p);
-        return;
-      }
-      p.walkup.file = fresh.preview;
-    }));
-    if (due.length) localStorage.setItem('walkup-deezer-info', JSON.stringify(buildDeezerInfo()));
+    await Promise.all(due.map(refreshPreviewFor));
   }
   setInterval(() => {
     if (document.visibilityState === 'visible') refreshExpiringDeezerUrls().catch(() => {});
@@ -576,9 +575,7 @@
   // time, or when the song fails to load.
   async function reloadWalkupSource(player) {
     if (!player._isDeezer || !player._deezerTrack || !player._deezerTrack.id) return;
-    const fresh = await resolveDeezerTrack(player._deezerTrack.id);
-    if (!fresh || isExplicitTrack(fresh)) return;
-    player.walkup.file = fresh.preview;
+    if (!(await refreshPreviewFor(player))) return;
     if (currentPlayer !== player || !playbackPhase) return;
 
     const pausedMs = isPaused ? Date.now() - pausedAt : 0;
@@ -837,48 +834,191 @@
     refreshDeezerUrls().catch(() => {});
   }
 
-  async function remotePull() {
-    if (syncTimer) return; // a local change is pending; don't clobber it
-    try {
-      const res = await fetch(`${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}&select=data`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-      });
-      if (!res.ok) return;
-      const rows = await res.json();
-      const data = rows[0] && rows[0].data;
-      if (data && Object.keys(data).length > 0) {
-        applyConfigData(data);
-      } else {
-        // Cloud is empty — seed it from this device's existing selections.
-        const local = collectConfigData();
-        if (configHasContent(local)) remotePush();
+  // Sync model. Each device remembers the copy it last agreed with the cloud
+  // (lastSynced). A sync reads the cloud's current copy, works out what this
+  // device changed since lastSynced, and writes back the cloud copy with only
+  // those changes applied. A device holding an old copy therefore cannot undo
+  // changes made elsewhere: it only ever sends what it changed itself. The
+  // write only succeeds if the row is unchanged since it was read; if another
+  // device wrote in between, the merge is redone against the newer copy.
+  //
+  // lastSynced lives in memory per tab (another tab's copy says nothing about
+  // what this tab has seen) and in localStorage, so a change made with no
+  // signal is still recognised as unsent after the app is closed.
+  const SYNC_MAPS = ['deezer', 'startTimes', 'pronunciations', 'jerseys'];
+  const SYNC_SCALARS = ['globalDuration', 'announceWithNumbers'];
+  let lastSynced = null;
+  try { lastSynced = JSON.parse(localStorage.getItem('walkup-last-synced')); } catch (e) {}
+
+  function setLastSynced(data) {
+    lastSynced = data;
+    localStorage.setItem('walkup-last-synced', JSON.stringify(data));
+  }
+
+  // A Deezer pick's preview URL changes on every refresh. It is not a choice
+  // anyone made, so it is left out when comparing.
+  function syncCompareKey(section, value) {
+    if (value === undefined || value === null) return null;
+    if (section === 'deezer') {
+      const { file, ...pick } = value;
+      return JSON.stringify(pick);
+    }
+    return JSON.stringify(value);
+  }
+
+  function diffConfig(base, local) {
+    const changes = [];
+    SYNC_SCALARS.forEach(section => {
+      if (local[section] === undefined) return;
+      if (syncCompareKey(section, base[section]) !== syncCompareKey(section, local[section])) {
+        changes.push({ section, value: local[section] });
       }
-    } catch (e) {}
+    });
+    SYNC_MAPS.forEach(section => {
+      const b = base[section] || {};
+      const l = local[section] || {};
+      new Set([...Object.keys(b), ...Object.keys(l)]).forEach(key => {
+        if (syncCompareKey(section, b[key]) !== syncCompareKey(section, l[key])) {
+          changes.push({ section, key, value: l[key] });
+        }
+      });
+    });
+    return changes;
+  }
+
+  function applyChanges(data, changes) {
+    const out = JSON.parse(JSON.stringify(data || {}));
+    changes.forEach(c => {
+      if (c.key === undefined) {
+        out[c.section] = c.value;
+        return;
+      }
+      out[c.section] = out[c.section] || {};
+      if (c.value === undefined) delete out[c.section][c.key];
+      else out[c.section][c.key] = c.value;
+    });
+    return out;
+  }
+
+  function requestSync() {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+    if (syncRunning) {
+      syncAgain = true;
+      return syncRunning;
+    }
+    syncRunning = (async () => {
+      try {
+        do {
+          syncAgain = false;
+          await syncOnce();
+        } while (syncAgain);
+      } finally {
+        syncRunning = null;
+      }
+    })();
+    return syncRunning;
+  }
+
+  function scheduleSyncRetry() {
+    clearTimeout(syncRetryTimer);
+    syncRetryTimer = setTimeout(() => requestSync(), 15000);
+  }
+
+  async function syncOnce() {
+    clearTimeout(syncRetryTimer);
+    const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let row;
+      try {
+        const res = await fetch(`${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}&select=data,updated_at`, {
+          headers: auth,
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error('read failed');
+        row = (await res.json())[0];
+      } catch (e) {
+        scheduleSyncRetry();
+        return;
+      }
+      if (!row) return;
+      const remote = row.data || {};
+      const local = collectConfigData();
+      const localKey = JSON.stringify(local);
+
+      let changes;
+      if (Object.keys(remote).length === 0) {
+        // Cloud is empty: seed it from this device's existing selections.
+        changes = configHasContent(local) ? diffConfig({}, local) : [];
+      } else if (!lastSynced) {
+        // Never synced under this scheme, so there is nothing to tell what
+        // this device changed: take the cloud's copy as it is.
+        changes = [];
+      } else {
+        changes = diffConfig(lastSynced, local);
+      }
+
+      if (changes.length === 0) {
+        setLastSynced(remote);
+        applyIfUnchanged(remote, localKey);
+        return;
+      }
+
+      const merged = applyChanges(remote, changes);
+      try {
+        const res = await fetch(
+          `${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}&updated_at=eq.${encodeURIComponent(row.updated_at)}`, {
+            method: 'PATCH',
+            headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+            body: JSON.stringify({ data: merged, updated_at: new Date().toISOString() }),
+          });
+        if (!res.ok) throw new Error('write failed');
+        const written = await res.json();
+        if (written.length === 0) continue; // another device wrote first: merge again
+      } catch (e) {
+        scheduleSyncRetry();
+        return;
+      }
+      setLastSynced(merged);
+      applyIfUnchanged(merged, localKey);
+      return;
+    }
+    scheduleSyncRetry();
+  }
+
+  // Shows the synced copy here, unless something was changed on this device
+  // while the sync was in flight; that change goes out with the next sync.
+  function applyIfUnchanged(data, localKey) {
+    const now = collectConfigData();
+    if (JSON.stringify(now) !== localKey) {
+      syncAgain = true;
+      return;
+    }
+    if (diffConfig(data, now).length === 0) return;
+    applyConfigData(data);
   }
 
   function scheduleSync() {
     if (applyingRemote) return;
     clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => { syncTimer = null; remotePush(); }, 800);
+    syncTimer = setTimeout(() => requestSync(), 800);
   }
 
-  async function remotePush() {
-    try {
-      await fetch(`${SYNC_ENDPOINT}?id=eq.${CONFIG_ROW}`, {
-        method: 'PATCH',
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({ data: collectConfigData(), updated_at: new Date().toISOString() }),
-      });
-    } catch (e) {}
-  }
+  // Send a pending change straight away when the app is hidden. If the phone
+  // suspends the app before it finishes, nothing is lost: the change still
+  // differs from lastSynced and goes out on the next sync.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (syncTimer) requestSync();
+    } else {
+      requestSync();
+    }
+  });
+  window.addEventListener('pagehide', () => { if (syncTimer) requestSync(); });
+  window.addEventListener('online', () => requestSync());
 
-  // Pull others' changes when returning to the app.
-  window.addEventListener('focus', () => remotePull());
+  // Pick up others' changes when returning to the app.
+  window.addEventListener('focus', () => requestSync());
 
   // === Init ===
   async function init() {
@@ -929,13 +1069,14 @@
     setupMediaSessionHandlers();
     updateTransportState();
 
-    // Refresh expiring Deezer preview URLs in the background.
-    refreshDeezerUrls().catch(() => {});
-
     // Pull the shared cloud config (applies + re-renders if present, or seeds
     // the cloud from this device's existing selections if empty), then fall back
-    // to batting everyone if no lineup came from either place.
-    remotePull().then(seedLineupIfEmpty).catch(() => seedLineupIfEmpty());
+    // to batting everyone if no lineup came from either place. Preview URLs are
+    // refreshed after, so they are resolved for the picks that end up in place.
+    requestSync()
+      .then(seedLineupIfEmpty, seedLineupIfEmpty)
+      .then(() => refreshDeezerUrls())
+      .catch(() => {});
   }
 
   // === Tab switching ===
