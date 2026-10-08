@@ -1069,6 +1069,12 @@
     setupMediaSessionHandlers();
     updateTransportState();
 
+    // Coming back from an automatic update: put the batter and tab back.
+    restoreAfterUpdate();
+    showBarFromLineup();
+    renderLineup();
+    updateTransportState();
+
     // Pull the shared cloud config (applies + re-renders if present, or seeds
     // the cloud from this device's existing selections if empty), then fall back
     // to batting everyone if no lineup came from either place. Preview URLs are
@@ -2665,11 +2671,139 @@
     document.querySelectorAll('.playing').forEach(el => el.classList.remove('playing'));
   }
 
-  // === Service Worker (PWA) ===
+  // === Service Worker (PWA) and automatic updates ===
+  // The service worker serves the app from its cache, so a new version only
+  // runs once the browser has fetched it and the page has been reloaded. An
+  // installed iPhone app is usually resumed rather than restarted, so without
+  // this it could keep running an old version for days.
+  //
+  // The app checks for a new version on launch, when it returns to the screen,
+  // and every hour while it is open (at most once an hour). A new service
+  // worker installs and then waits; the app tells it to take over, and
+  // reloads, only at a moment when nothing is playing or being edited: during
+  // startup, on a return to the screen, or after 10 minutes untouched. The
+  // batter who is up and the open tab carry over the reload. If the app is
+  // closed while an update is waiting, the browser switches over on its own
+  // and the next launch starts on the new version.
+  const UPDATE_CHECK_MS = 60 * 60 * 1000;
+  const IDLE_BEFORE_UPDATE_MS = 10 * 60 * 1000;
+  let shownAt = Date.now(); // when the app launched or last came back on screen
+  let swRegistration = null;
+  let updateReady = false;   // a newer version is installed and not yet running here
+  let reloadOnTakeover = false;
+
+  function checkForUpdate() {
+    if (!swRegistration) return;
+    let last = 0;
+    try { last = Number(localStorage.getItem('walkup-update-checked')) || 0; } catch (e) {}
+    if (Date.now() - last < UPDATE_CHECK_MS) return;
+    try { localStorage.setItem('walkup-update-checked', String(Date.now())); } catch (e) {}
+    swRegistration.update().catch(() => {});
+  }
+
+  function appIsBusy() {
+    if (playbackPhase) return true;
+    if (document.visibilityState !== 'visible') return true;
+    if (document.querySelector('#search-modal:not(.hidden), #confirm-modal:not(.hidden)')) return true;
+    const el = document.activeElement;
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return true;
+    return false;
+  }
+
+  function justShown() {
+    return Date.now() - shownAt < 15000;
+  }
+
+  function applyUpdateIfIdle() {
+    if (!updateReady || appIsBusy()) return;
+    updateReady = false;
+    try {
+      const tab = document.querySelector('.tab.active');
+      sessionStorage.setItem('walkup-resume', JSON.stringify({
+        currentBatterIdx,
+        tab: tab ? tab.dataset.tab : null,
+      }));
+    } catch (e) {}
+    const waiting = swRegistration && swRegistration.waiting;
+    if (waiting) {
+      // Reload once the new version has taken over (see controllerchange).
+      reloadOnTakeover = true;
+      waiting.postMessage('skipWaiting');
+    } else {
+      // Already in charge (another tab let it in): just load its files.
+      location.reload();
+    }
+  }
+
+  function offerUpdate() {
+    updateReady = true;
+    if (justShown()) applyUpdateIfIdle();
+  }
+
+  // Puts back what the reload would otherwise lose. Called from init().
+  function restoreAfterUpdate() {
+    let state = null;
+    try {
+      state = JSON.parse(sessionStorage.getItem('walkup-resume'));
+      sessionStorage.removeItem('walkup-resume');
+    } catch (e) {}
+    if (!state) return;
+    if (Number.isInteger(state.currentBatterIdx) && state.currentBatterIdx < lineup.length) {
+      currentBatterIdx = state.currentBatterIdx;
+    }
+    if (state.tab) {
+      const tab = document.querySelector(`.tab[data-tab="${state.tab}"]`);
+      if (tab && !tab.classList.contains('active')) tab.click();
+    }
+  }
+
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Only a page that was already running under a service worker has an old
+    // version to replace; the very first install has nothing to update.
+    const hadController = !!navigator.serviceWorker.controller;
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadOnTakeover) {
+        location.reload();
+        return;
+      }
+      // Another tab let a new version in; this one is still on the old code.
+      if (hadController) offerUpdate();
     });
+
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        swRegistration = reg;
+        // Installed earlier (for example by the browser's own check when the
+        // app was opened) and waiting for this page to let it in.
+        if (reg.waiting && navigator.serviceWorker.controller) offerUpdate();
+        reg.addEventListener('updatefound', () => {
+          const worker = reg.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) offerUpdate();
+          });
+        });
+        checkForUpdate();
+      }).catch(() => {});
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      shownAt = Date.now();
+      checkForUpdate();
+      applyUpdateIfIdle();
+    });
+
+    // An app left on screen all day (a desktop tab) takes the update once
+    // nobody has touched it for a while.
+    let lastInteraction = Date.now();
+    ['pointerdown', 'keydown'].forEach(type =>
+      document.addEventListener(type, () => { lastInteraction = Date.now(); }, true));
+    setInterval(() => {
+      checkForUpdate();
+      if (Date.now() - lastInteraction > IDLE_BEFORE_UPDATE_MS) applyUpdateIfIdle();
+    }, 60 * 1000);
   }
 
   // === Warn before closing during playback ===
