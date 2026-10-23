@@ -32,27 +32,72 @@
 
   // === Playback log ===
   // Sound sometimes fails on one phone and not another, and the browser's
-  // reasons are otherwise thrown away. The app keeps a short record of what
-  // playback did, shown in Settings, so a silent batter can be explained.
-  const PLAYBACK_LOG_KEY = 'walkup-playback-log';
-  const PLAYBACK_LOG_MAX = 80;
-  let playbackLog = [];
-  try { playbackLog = JSON.parse(localStorage.getItem(PLAYBACK_LOG_KEY)) || []; } catch (e) {}
+  // reasons are otherwise thrown away. The app records what playback did and
+  // sends it to the walkup_logs table in Supabase, so a silent batter can be
+  // explained afterwards. Nothing is shown in the app. Entries wait on the
+  // device until they are sent, so a game with no signal is sent later.
+  const LOG_QUEUE_KEY = 'walkup-log-queue';
+  const LOG_QUEUE_MAX = 500;
+  const LOG_ENDPOINT = 'https://mvozngwagbfcthshisku.supabase.co/rest/v1/walkup_logs';
+  let logQueue = [];
+  try { logQueue = JSON.parse(localStorage.getItem(LOG_QUEUE_KEY)) || []; } catch (e) {}
 
+  // A random name for this phone, so its entries can be told apart.
+  let logDevice = null;
+  try {
+    logDevice = localStorage.getItem('walkup-device-id');
+    if (!logDevice) {
+      logDevice = Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('walkup-device-id', logDevice);
+    }
+  } catch (e) {}
+
+  function saveLogQueue() {
+    try { localStorage.setItem(LOG_QUEUE_KEY, JSON.stringify(logQueue)); } catch (e) {}
+  }
+
+  let logTimer = null;
   function logPlayback(msg) {
-    const stamp = new Date().toLocaleString([], {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
-    });
-    playbackLog.push(stamp + '  ' + msg);
-    if (playbackLog.length > PLAYBACK_LOG_MAX) playbackLog.splice(0, playbackLog.length - PLAYBACK_LOG_MAX);
-    try { localStorage.setItem(PLAYBACK_LOG_KEY, JSON.stringify(playbackLog)); } catch (e) {}
-    renderPlaybackLog();
+    logQueue.push({ device: logDevice || 'unknown', logged_at: new Date().toISOString(), message: msg });
+    if (logQueue.length > LOG_QUEUE_MAX) logQueue.splice(0, logQueue.length - LOG_QUEUE_MAX);
+    saveLogQueue();
+    clearTimeout(logTimer);
+    logTimer = setTimeout(sendLogs, 3000);
   }
 
-  function renderPlaybackLog() {
-    const el = document.getElementById('playback-log');
-    if (el) el.textContent = playbackLog.slice().reverse().join('\n') || 'Nothing played yet.';
+  let logSending = false;
+  async function sendLogs() {
+    clearTimeout(logTimer);
+    logTimer = null;
+    if (logSending || !logQueue.length) return;
+    logSending = true;
+    const batch = logQueue.slice(0, 100);
+    try {
+      const res = await fetch(LOG_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify(batch),
+        keepalive: true,
+      });
+      if (res.ok) {
+        logQueue.splice(0, batch.length);
+        saveLogQueue();
+        if (logQueue.length) logTimer = setTimeout(sendLogs, 1000);
+      }
+    } catch (e) {
+    } finally {
+      logSending = false;
+    }
   }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sendLogs();
+  });
+  window.addEventListener('online', () => sendLogs());
 
   // For play() rejections. AbortError only means the play was cut short by a
   // pause or a new source, which the app does on purpose, so it is not logged.
@@ -1089,7 +1134,8 @@
     const installed = window.matchMedia('(display-mode: standalone)').matches
       || navigator.standalone === true;
     const versions = window.caches ? await caches.keys().catch(() => []) : [];
-    logPlayback(`App opened (${installed ? 'installed app' : 'browser'}, ${versions.join(' ') || 'no cached version'})`);
+    logPlayback(`App opened (${installed ? 'installed app' : 'browser'}, ${versions.join(' ') || 'no cached version'}, `
+      + `${navigator.userAgent})`);
 
     const resp = await fetch('roster.json');
     roster = await resp.json();
@@ -1138,7 +1184,6 @@
     renderRoster();
     renderLineup();
     renderSettings();
-    renderPlaybackLog();
     setupTabs();
     setupControls();
     setupNowPlayingGestures();
@@ -2443,32 +2488,11 @@
         walkupRetriedFor = playbackStartTime;
         reloadWalkupSource(player).catch(() => {});
       }
-      watchSongStart(player);
     }
 
     acquireWakeLock();
     setMediaSessionMetadata(player);
     startProgressTracking();
-  }
-
-  // If the song still is not playing a few seconds after the tap, try once
-  // more: a fresh link for a Deezer song, or another play() for any song.
-  const SONG_START_TIMEOUT_MS = 5000;
-  let songWatchdog = null;
-  function watchSongStart(player) {
-    clearTimeout(songWatchdog);
-    songWatchdog = setTimeout(() => {
-      songWatchdog = null;
-      if (currentPlayer !== player || !playbackPhase || isPaused) return;
-      if (!walkupAudio.paused && walkupAudio.readyState >= 3) return;
-      logPlayback(`Song not playing after ${SONG_START_TIMEOUT_MS / 1000}s `
-        + `(ready state ${walkupAudio.readyState}${walkupAudio.error ? ', error ' + walkupAudio.error.code : ''}); retrying`);
-      if (player._isDeezer) {
-        reloadWalkupSource(player).catch(() => {});
-      } else {
-        walkupAudio.play().catch(playFailed('Song'));
-      }
-    }, SONG_START_TIMEOUT_MS);
   }
 
   // === Media Session (lock screen controls) ===
@@ -2607,8 +2631,6 @@
   }
 
   function stopPlayback(withFade, autoAdvance = true) {
-    clearTimeout(songWatchdog);
-    songWatchdog = null;
     clearInterval(fadeInterval);
     clearInterval(progressInterval);
     if (walkupFadeTimeout) {
