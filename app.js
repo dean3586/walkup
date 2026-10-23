@@ -2821,9 +2821,8 @@
     return Date.now() - shownAt < 15000;
   }
 
-  function applyUpdateIfIdle() {
-    if (!updateReady || appIsBusy()) return;
-    updateReady = false;
+  // Keeps the batter who is up and the open tab across a reload.
+  function saveResumeState() {
     try {
       const tab = document.querySelector('.tab.active');
       sessionStorage.setItem('walkup-resume', JSON.stringify({
@@ -2831,6 +2830,12 @@
         tab: tab ? tab.dataset.tab : null,
       }));
     } catch (e) {}
+  }
+
+  function applyUpdateIfIdle() {
+    if (!updateReady || appIsBusy()) return;
+    updateReady = false;
+    saveResumeState();
     const waiting = swRegistration && swRegistration.waiting;
     if (waiting) {
       // Reload once the new version has taken over (see controllerchange).
@@ -2841,6 +2846,30 @@
       location.reload();
     }
   }
+
+  // "App not working? Reset" in the header. A web page cannot close itself,
+  // so this reloads it, which is what closing and reopening the app did when
+  // sound stopped working. A new version waiting to install comes in with it.
+  // The tap is logged so the playback log shows what led up to it.
+  const launchedAt = Date.now();
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    const playing = playbackPhase && currentPlayer
+      ? `during #${jerseyOf(currentPlayer)} ${currentPlayer.firstName} ${currentPlayer.lastName}`
+      : 'nothing playing';
+    const waiting = swRegistration && swRegistration.waiting;
+    logPlayback(`Reset tapped (${playing}, app open ${Math.round((Date.now() - launchedAt) / 60000)} min`
+      + `${waiting ? ', update waiting' : ''})`);
+    stopPlayback(false, false);
+    saveResumeState();
+    if (waiting) {
+      reloadOnTakeover = true;
+      waiting.postMessage('skipWaiting');
+      // In case the new version never takes over.
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      location.reload();
+    }
+  });
 
   function offerUpdate() {
     updateReady = true;

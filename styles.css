@@ -84,6 +84,37 @@ header h1 {
   color: var(--accent);
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header-top h1 {
+  white-space: nowrap;
+}
+
+.reset-btn {
+  min-width: 0;
+  text-align: right;
+  line-height: 1.4;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.reset-btn span {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 nav {
   display: flex;
 }
