@@ -30,6 +30,39 @@
     if (navigator.audioSession) navigator.audioSession.type = 'playback';
   } catch (e) {}
 
+  // === Playback log ===
+  // Sound sometimes fails on one phone and not another, and the browser's
+  // reasons are otherwise thrown away. The app keeps a short record of what
+  // playback did, shown in Settings, so a silent batter can be explained.
+  const PLAYBACK_LOG_KEY = 'walkup-playback-log';
+  const PLAYBACK_LOG_MAX = 80;
+  let playbackLog = [];
+  try { playbackLog = JSON.parse(localStorage.getItem(PLAYBACK_LOG_KEY)) || []; } catch (e) {}
+
+  function logPlayback(msg) {
+    const stamp = new Date().toLocaleString([], {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
+    });
+    playbackLog.push(stamp + '  ' + msg);
+    if (playbackLog.length > PLAYBACK_LOG_MAX) playbackLog.splice(0, playbackLog.length - PLAYBACK_LOG_MAX);
+    try { localStorage.setItem(PLAYBACK_LOG_KEY, JSON.stringify(playbackLog)); } catch (e) {}
+    renderPlaybackLog();
+  }
+
+  function renderPlaybackLog() {
+    const el = document.getElementById('playback-log');
+    if (el) el.textContent = playbackLog.slice().reverse().join('\n') || 'Nothing played yet.';
+  }
+
+  // For play() rejections. AbortError only means the play was cut short by a
+  // pause or a new source, which the app does on purpose, so it is not logged.
+  function playFailed(which) {
+    return (e) => {
+      if (e && e.name === 'AbortError') return;
+      logPlayback(`${which} would not play: ${e && e.name}${e && e.message ? ' (' + e.message + ')' : ''}`);
+    };
+  }
+
   // === Audio mix tuning ===
   const DUCK_VOLUME = 0.4;    // music volume while the announcer is talking
   const FULL_VOLUME = 1;      // music volume after the announcement finishes
@@ -584,7 +617,10 @@
   // time, or when the song fails to load.
   async function reloadWalkupSource(player) {
     if (!player._isDeezer || !player._deezerTrack || !player._deezerTrack.id) return;
-    if (!(await refreshPreviewFor(player))) return;
+    if (!(await refreshPreviewFor(player))) {
+      logPlayback('Could not get a fresh song link from Deezer');
+      return;
+    }
     if (currentPlayer !== player || !playbackPhase) return;
 
     const pausedMs = isPaused ? Date.now() - pausedAt : 0;
@@ -592,9 +628,16 @@
     walkupAudio.src = player.walkup.file;
     walkupAudio.currentTime = (player.walkup.startTime || 0) + elapsed;
     walkupAudio.volume = playbackPhase === 'walkup' ? FULL_VOLUME : DUCK_VOLUME;
-    if (!isPaused) walkupAudio.play().catch(() => {});
+    if (!isPaused) walkupAudio.play().catch(playFailed('Song'));
     if (playbackPhase === 'walkup') scheduleWalkupFadeOut(player);
   }
+
+  [[walkupAudio, 'Song'], [announcementAudio, 'Announcer']].forEach(([el, which]) => {
+    el.addEventListener('playing', () => { if (playbackPhase) logPlayback(`${which} playing`); });
+    el.addEventListener('error', () => {
+      if (playbackPhase) logPlayback(`${which} failed to load (error ${el.error ? el.error.code : '?'})`);
+    });
+  });
 
   let walkupRetriedFor = null; // the playPlayer() call that already retried
   walkupAudio.addEventListener('error', () => {
@@ -1029,8 +1072,25 @@
   // Pick up others' changes when returning to the app.
   window.addEventListener('focus', () => requestSync());
 
+  // Resuming after a long time in the background is when sound has been
+  // least reliable, so how long the app was away is recorded.
+  let hiddenAt = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+    } else if (hiddenAt) {
+      logPlayback(`Back on screen after ${Math.round((Date.now() - hiddenAt) / 60000)} min`);
+      hiddenAt = null;
+    }
+  });
+
   // === Init ===
   async function init() {
+    const installed = window.matchMedia('(display-mode: standalone)').matches
+      || navigator.standalone === true;
+    const versions = window.caches ? await caches.keys().catch(() => []) : [];
+    logPlayback(`App opened (${installed ? 'installed app' : 'browser'}, ${versions.join(' ') || 'no cached version'})`);
+
     const resp = await fetch('roster.json');
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
@@ -1078,6 +1138,7 @@
     renderRoster();
     renderLineup();
     renderSettings();
+    renderPlaybackLog();
     setupTabs();
     setupControls();
     setupNowPlayingGestures();
@@ -1782,7 +1843,7 @@
       // Play it back so the pronunciation can be judged immediately.
       announcementAudio.src = player.announcement;
       announcementAudio.currentTime = 0;
-      announcementAudio.play().catch(() => {});
+      announcementAudio.play().catch(playFailed('Announcer'));
     } catch (err) {
       statusEl.textContent = (err instanceof TypeError)
         ? 'Could not reach the recording service.'
@@ -2020,11 +2081,11 @@
       announcementAudio.currentTime = 0;
       announcementTimer = setTimeout(() => {
         announcementTimer = null;
-        if (playbackPhase === 'announcement' && !isPaused) announcementAudio.play().catch(() => {});
+        if (playbackPhase === 'announcement' && !isPaused) announcementAudio.play().catch(playFailed('Announcer'));
       }, -pos * 1000);
     } else {
       announcementAudio.currentTime = pos;
-      announcementAudio.play().catch(() => {});
+      announcementAudio.play().catch(playFailed('Announcer'));
     }
   }
 
@@ -2048,9 +2109,9 @@
         isPaused = false;
         if (playbackPhase === 'announcement') {
           playAnnouncementOnSchedule();
-          if (currentPlayer && currentPlayer.walkup) walkupAudio.play().catch(() => {});
+          if (currentPlayer && currentPlayer.walkup) walkupAudio.play().catch(playFailed('Song'));
         } else {
-          walkupAudio.play().catch(() => {});
+          walkupAudio.play().catch(playFailed('Song'));
         }
         acquireWakeLock();
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -2349,7 +2410,12 @@
     // Once routed through the boost, the announcer is heard only while the
     // context runs. iOS suspends it when the app goes to the background and
     // does not restart it, so it is resumed here, during the tap.
-    if (announcementCtx.state !== 'running') announcementCtx.resume().catch(() => {});
+    const ctxState = announcementCtx.state;
+    if (ctxState !== 'running') announcementCtx.resume().catch(() => {});
+    logPlayback(`Play #${jerseyOf(player)} ${player.firstName} ${player.lastName}: `
+      + (!player.walkup ? 'no song' : !player._isDeezer ? 'uploaded song'
+        : deezerUrlExpiresWithin(player.walkup.file, 0) ? 'song link expired' : 'song link fresh')
+      + `, announcer audio ${ctxState}`);
     announcementAudio.src = player.announcement;
     announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
@@ -2357,7 +2423,7 @@
       // The announcer starts later, outside this tap. Calling play() during
       // the tap is what lets iOS play it then; muted so nothing is heard.
       announcementAudio.muted = true;
-      announcementAudio.play().catch(() => {});
+      announcementAudio.play().catch(playFailed('Announcer'));
       announcementAudio.pause();
       announcementAudio.muted = false;
       announceWhenMusicStarts(player);
@@ -2370,18 +2436,39 @@
       walkupAudio.src = player.walkup.file;
       walkupAudio.volume = DUCK_VOLUME;
       walkupAudio.currentTime = startTime;
-      walkupAudio.play().catch(() => {});
+      walkupAudio.play().catch(playFailed('Song'));
       // An expired URL would fail; fetch a fresh one and pick the song up
       // where it should be. The announcement covers the short wait.
       if (player._isDeezer && deezerUrlExpiresWithin(player.walkup.file, 20 * 1000)) {
         walkupRetriedFor = playbackStartTime;
         reloadWalkupSource(player).catch(() => {});
       }
+      watchSongStart(player);
     }
 
     acquireWakeLock();
     setMediaSessionMetadata(player);
     startProgressTracking();
+  }
+
+  // If the song still is not playing a few seconds after the tap, try once
+  // more: a fresh link for a Deezer song, or another play() for any song.
+  const SONG_START_TIMEOUT_MS = 5000;
+  let songWatchdog = null;
+  function watchSongStart(player) {
+    clearTimeout(songWatchdog);
+    songWatchdog = setTimeout(() => {
+      songWatchdog = null;
+      if (currentPlayer !== player || !playbackPhase || isPaused) return;
+      if (!walkupAudio.paused && walkupAudio.readyState >= 3) return;
+      logPlayback(`Song not playing after ${SONG_START_TIMEOUT_MS / 1000}s `
+        + `(ready state ${walkupAudio.readyState}${walkupAudio.error ? ', error ' + walkupAudio.error.code : ''}); retrying`);
+      if (player._isDeezer) {
+        reloadWalkupSource(player).catch(() => {});
+      } else {
+        walkupAudio.play().catch(playFailed('Song'));
+      }
+    }, SONG_START_TIMEOUT_MS);
   }
 
   // === Media Session (lock screen controls) ===
@@ -2496,7 +2583,7 @@
       if (currentPlayer.walkup) {
         walkupAudio.currentTime = startTime + seconds;
         walkupAudio.volume = DUCK_VOLUME;
-        if (!isPaused) walkupAudio.play().catch(() => {});
+        if (!isPaused) walkupAudio.play().catch(playFailed('Song'));
       }
     } else {
       // Past announcement → walkup phase
@@ -2508,7 +2595,7 @@
       if (currentPlayer.walkup) {
         walkupAudio.currentTime = startTime + seconds;
         walkupAudio.volume = FULL_VOLUME;
-        if (!isPaused) walkupAudio.play().catch(() => {});
+        if (!isPaused) walkupAudio.play().catch(playFailed('Song'));
         scheduleWalkupFadeOut(currentPlayer);
       } else {
         finishPlayback();
@@ -2520,6 +2607,8 @@
   }
 
   function stopPlayback(withFade, autoAdvance = true) {
+    clearTimeout(songWatchdog);
+    songWatchdog = null;
     clearInterval(fadeInterval);
     clearInterval(progressInterval);
     if (walkupFadeTimeout) {
