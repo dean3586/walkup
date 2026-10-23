@@ -1,0 +1,8 @@
+{"at":"2026-10-23T00:57:34.327Z","message":"App opened (browser, no cached version, Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36)"}
+{"at":"2026-10-23T00:57:37.370Z","message":"App opened (browser, walkup-v35, Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36)"}
+{"at":"2026-10-23T00:57:37.921Z","message":"#25 song link expired at tap; fetching a fresh one before starting"}
+{"at":"2026-10-23T00:57:38.119Z","message":"Play #25 Nolan Pitton: song link fresh, announcer audio running"}
+{"at":"2026-10-23T00:57:38.734Z","message":"Song playing"}
+{"at":"2026-10-23T00:57:39.235Z","message":"Announcer playing"}
+{"at":"2026-10-23T00:57:41.967Z","message":"Reset tapped (during #25 Nolan Pitton, app open 0 min)"}
+{"at":"2026-10-23T00:57:42.005Z","message":"App opened (browser, walkup-v35, Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36)"}
