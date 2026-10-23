@@ -20,6 +20,15 @@
   let announcementTimer = null; // pending announcement start (see ANNOUNCE_DELAY)
   let cancelMusicWait = null;   // stops waiting for the song to start, if waiting
   let wakeLock = null;
+  let announcementCtx = null;   // Web Audio context for the announcer's boost
+
+  // Web Audio follows the iPhone's silent switch, while plain audio elements
+  // do not, so with the phone on silent the announcer (boosted through Web
+  // Audio) was muted and the song was not. Treating the page as a media
+  // player makes both play regardless of the switch (Safari 17 and later).
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch (e) {}
 
   // === Audio mix tuning ===
   const DUCK_VOLUME = 0.4;    // music volume while the announcer is talking
@@ -1033,6 +1042,12 @@
     loadPronunciations();
     loadJerseys();
     await loadAnnouncementOverrides();
+
+    // Every saved song link has expired by the time the app is reopened, so
+    // fresh ones are fetched straight away rather than after the cloud sync,
+    // which can take several seconds on a weak signal. Until they arrive, a
+    // song started with a dead link has to fetch its own and start late.
+    refreshDeezerUrls().catch(() => {});
 
     const saved = localStorage.getItem('walkup-lineup');
     if (saved) {
@@ -2323,15 +2338,18 @@
     updateTransportState();
 
     // Boost announcement using Web Audio API gain node
-    if (!announcementAudio._boosted) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = ctx.createMediaElementSource(announcementAudio);
-      const gain = ctx.createGain();
+    if (!announcementCtx) {
+      announcementCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = announcementCtx.createMediaElementSource(announcementAudio);
+      const gain = announcementCtx.createGain();
       gain.gain.value = 1.5;
       source.connect(gain);
-      gain.connect(ctx.destination);
-      announcementAudio._boosted = true;
+      gain.connect(announcementCtx.destination);
     }
+    // Once routed through the boost, the announcer is heard only while the
+    // context runs. iOS suspends it when the app goes to the background and
+    // does not restart it, so it is resumed here, during the tap.
+    if (announcementCtx.state !== 'running') announcementCtx.resume().catch(() => {});
     announcementAudio.src = player.announcement;
     announcementAudio.volume = 1;
     announcementAudio.currentTime = 0;
