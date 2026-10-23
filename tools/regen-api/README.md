@@ -44,6 +44,20 @@ Replies `{ file, text, audio (base64 mp3), committed }`. Requests are refused
 unless the `Origin` header is the app's, and a wrong passcode costs the caller a
 1.5-second delay.
 
+## Playback log
+
+`POST /api/log` stores the app's playback log: taps, when each sound started,
+load and play errors, launches, returns from the background and resets. The
+app queues entries on the phone and sends them in batches:
+
+    { "device": "k3j9x0a2", "entries": [{ "at": "<ISO time>", "message": "..." }] }
+
+Each batch is committed as one file, `logs/<date>/<time>-<device>-<id>.jsonl`,
+to the repo's `logs` branch, which the endpoint creates from `main` the first
+time. Nothing on `logs` is deployed. Uses the same `GITHUB_TOKEN` and
+`GITHUB_REPO` as re-recording, and the same `Origin` check. Read it with
+`git fetch origin logs` and `git show origin/logs:logs/<date>/<file>`.
+
 ## Voice settings
 
 Identical to `tools/generate_announcements.py`: `eleven_v3`,

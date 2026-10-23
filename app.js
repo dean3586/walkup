@@ -33,12 +33,14 @@
   // === Playback log ===
   // Sound sometimes fails on one phone and not another, and the browser's
   // reasons are otherwise thrown away. The app records what playback did and
-  // sends it to the walkup_logs table in Supabase, so a silent batter can be
+  // sends it to the re-record endpoint, which commits it to the repo's logs
+  // branch (see tools/regen-api/api/log.js), so a silent batter can be
   // explained afterwards. Nothing is shown in the app. Entries wait on the
   // device until they are sent, so a game with no signal is sent later.
   const LOG_QUEUE_KEY = 'walkup-log-queue';
   const LOG_QUEUE_MAX = 500;
-  const LOG_ENDPOINT = 'https://mvozngwagbfcthshisku.supabase.co/rest/v1/walkup_logs';
+  const LOG_ENDPOINT = 'https://walkup-regen.vercel.app/api/log';
+  const LOG_SEND_DELAY_MS = 20000; // gathers a few plays into one commit
   let logQueue = [];
   try { logQueue = JSON.parse(localStorage.getItem(LOG_QUEUE_KEY)) || []; } catch (e) {}
 
@@ -47,7 +49,7 @@
   try {
     logDevice = localStorage.getItem('walkup-device-id');
     if (!logDevice) {
-      logDevice = Math.random().toString(36).slice(2, 10);
+      logDevice = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
       localStorage.setItem('walkup-device-id', logDevice);
     }
   } catch (e) {}
@@ -58,11 +60,11 @@
 
   let logTimer = null;
   function logPlayback(msg) {
-    logQueue.push({ device: logDevice || 'unknown', logged_at: new Date().toISOString(), message: msg });
+    logQueue.push({ at: new Date().toISOString(), message: msg });
     if (logQueue.length > LOG_QUEUE_MAX) logQueue.splice(0, logQueue.length - LOG_QUEUE_MAX);
     saveLogQueue();
     clearTimeout(logTimer);
-    logTimer = setTimeout(sendLogs, 3000);
+    logTimer = setTimeout(sendLogs, LOG_SEND_DELAY_MS);
   }
 
   let logSending = false;
@@ -75,13 +77,8 @@
     try {
       const res = await fetch(LOG_ENDPOINT, {
         method: 'POST',
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify(batch),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device: logDevice || 'unknown0', entries: batch }),
         keepalive: true,
       });
       if (res.ok) {
@@ -98,6 +95,7 @@
     if (document.visibilityState === 'hidden') sendLogs();
   });
   window.addEventListener('online', () => sendLogs());
+  window.addEventListener('pagehide', () => sendLogs());
 
   // For play() rejections. AbortError only means the play was cut short by a
   // pause or a new source, which the app does on purpose, so it is not logged.
@@ -657,38 +655,11 @@
     if (document.visibilityState === 'visible') refreshExpiringDeezerUrls().catch(() => {});
   });
 
-  // Swaps a fresh preview URL into the song that is playing right now, at the
-  // point it would have reached. Used when the stored URL is expired at play
-  // time, or when the song fails to load.
-  async function reloadWalkupSource(player) {
-    if (!player._isDeezer || !player._deezerTrack || !player._deezerTrack.id) return;
-    if (!(await refreshPreviewFor(player))) {
-      logPlayback('Could not get a fresh song link from Deezer');
-      return;
-    }
-    if (currentPlayer !== player || !playbackPhase) return;
-
-    const pausedMs = isPaused ? Date.now() - pausedAt : 0;
-    const elapsed = Math.max(0, (Date.now() - playbackStartTime - totalPausedMs - pausedMs) / 1000);
-    walkupAudio.src = player.walkup.file;
-    walkupAudio.currentTime = (player.walkup.startTime || 0) + elapsed;
-    walkupAudio.volume = playbackPhase === 'walkup' ? FULL_VOLUME : DUCK_VOLUME;
-    if (!isPaused) walkupAudio.play().catch(playFailed('Song'));
-    if (playbackPhase === 'walkup') scheduleWalkupFadeOut(player);
-  }
-
   [[walkupAudio, 'Song'], [announcementAudio, 'Announcer']].forEach(([el, which]) => {
     el.addEventListener('playing', () => { if (playbackPhase) logPlayback(`${which} playing`); });
     el.addEventListener('error', () => {
       if (playbackPhase) logPlayback(`${which} failed to load (error ${el.error ? el.error.code : '?'})`);
     });
-  });
-
-  let walkupRetriedFor = null; // the playPlayer() call that already retried
-  walkupAudio.addEventListener('error', () => {
-    if (!currentPlayer || !playbackPhase || walkupRetriedFor === playbackStartTime) return;
-    walkupRetriedFor = playbackStartTime;
-    reloadWalkupSource(currentPlayer).catch(() => {});
   });
 
   // Songs baked into roster.json (committed to the repo) carry their own
@@ -2428,7 +2399,44 @@
   }
 
   // === Play a player ===
+  // A Deezer link that has expired would leave the song silent, so a fresh
+  // one is fetched first and the announcer and song then start together. The
+  // app never restarts or reloads a song on its own once it has started.
+  let playRequest = 0;
   function playPlayer(player) {
+    const request = ++playRequest;
+    prepareAnnouncer();
+    if (!(player._isDeezer && player.walkup && player._deezerTrack && player._deezerTrack.id
+      && deezerUrlExpiresWithin(player.walkup.file, 20 * 1000))) {
+      startPlayer(player);
+      return;
+    }
+    logPlayback(`#${jerseyOf(player)} song link expired at tap; fetching a fresh one before starting`);
+    refreshPreviewFor(player).catch(() => null).then((fresh) => {
+      if (request !== playRequest) return; // another batter was tapped meanwhile
+      if (!fresh) logPlayback('Could not get a fresh song link from Deezer; starting anyway');
+      startPlayer(player);
+    });
+  }
+
+  // The announcer's volume boost runs through Web Audio, which a phone only
+  // lets start during a tap, so it is set up and resumed here, before any wait.
+  function prepareAnnouncer() {
+    if (!announcementCtx) {
+      announcementCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = announcementCtx.createMediaElementSource(announcementAudio);
+      const gain = announcementCtx.createGain();
+      gain.gain.value = 1.5;
+      source.connect(gain);
+      gain.connect(announcementCtx.destination);
+    }
+    // Once routed through the boost, the announcer is heard only while the
+    // context runs. iOS suspends it when the app goes to the background and
+    // does not restart it, so it is resumed on every tap.
+    if (announcementCtx.state !== 'running') announcementCtx.resume().catch(() => {});
+  }
+
+  function startPlayer(player) {
     stopPlayback(false, false);
 
     currentPlayer = player;
@@ -2443,20 +2451,7 @@
     updatePlayPauseIcon();
     updateTransportState();
 
-    // Boost announcement using Web Audio API gain node
-    if (!announcementCtx) {
-      announcementCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = announcementCtx.createMediaElementSource(announcementAudio);
-      const gain = announcementCtx.createGain();
-      gain.gain.value = 1.5;
-      source.connect(gain);
-      gain.connect(announcementCtx.destination);
-    }
-    // Once routed through the boost, the announcer is heard only while the
-    // context runs. iOS suspends it when the app goes to the background and
-    // does not restart it, so it is resumed here, during the tap.
     const ctxState = announcementCtx.state;
-    if (ctxState !== 'running') announcementCtx.resume().catch(() => {});
     logPlayback(`Play #${jerseyOf(player)} ${player.firstName} ${player.lastName}: `
       + (!player.walkup ? 'no song' : !player._isDeezer ? 'uploaded song'
         : deezerUrlExpiresWithin(player.walkup.file, 0) ? 'song link expired' : 'song link fresh')
@@ -2482,12 +2477,6 @@
       walkupAudio.volume = DUCK_VOLUME;
       walkupAudio.currentTime = startTime;
       walkupAudio.play().catch(playFailed('Song'));
-      // An expired URL would fail; fetch a fresh one and pick the song up
-      // where it should be. The announcement covers the short wait.
-      if (player._isDeezer && deezerUrlExpiresWithin(player.walkup.file, 20 * 1000)) {
-        walkupRetriedFor = playbackStartTime;
-        reloadWalkupSource(player).catch(() => {});
-      }
     }
 
     acquireWakeLock();
@@ -2631,6 +2620,7 @@
   }
 
   function stopPlayback(withFade, autoAdvance = true) {
+    playRequest++; // a batter still waiting for a fresh song link does not start
     clearInterval(fadeInterval);
     clearInterval(progressInterval);
     if (walkupFadeTimeout) {
